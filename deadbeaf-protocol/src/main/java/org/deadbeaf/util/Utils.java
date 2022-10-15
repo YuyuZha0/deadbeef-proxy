@@ -2,6 +2,7 @@ package org.deadbeaf.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
@@ -125,7 +126,7 @@ public final class Utils {
               request.remoteAddress(),
               request.method(),
               request.version(),
-              request.getHeader(HttpHeaderNames.HOST),
+              MoreObjects.firstNonNull(request.getHeader(HttpHeaderNames.HOST), request.host()),
               request.path());
       logger.debug(msg);
     }

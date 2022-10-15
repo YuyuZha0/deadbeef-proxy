@@ -1,10 +1,13 @@
 package org.deadbeaf.client;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.http.*;
 import io.vertx.core.net.SocketAddress;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.deadbeaf.route.AddressPicker;
 import org.deadbeaf.util.Utils;
 
@@ -21,8 +24,9 @@ public final class ClientHttpsHandler implements Handler<HttpServerRequest> {
 
   @Override
   public void handle(HttpServerRequest serverRequest) {
-    if (serverRequest.method() != HttpMethod.CONNECT) {
-      serverRequest.end();
+    if (serverRequest.method() != HttpMethod.CONNECT
+        || StringUtils.isEmpty(serverRequest.getHeader(HttpHeaderNames.HOST))) {
+      serverRequest.response().setStatusCode(HttpResponseStatus.FORBIDDEN.code()).end();
       return;
     }
     RequestOptions requestOptions = new RequestOptions();
@@ -38,7 +42,7 @@ public final class ClientHttpsHandler implements Handler<HttpServerRequest> {
         .onSuccess(
             clientRequest -> {
               if (log.isDebugEnabled()) {
-                log.debug("Send CONNECT successfully to: {}", address);
+                log.debug("Send [CONNECT] successfully to: {}", address);
               }
               clientRequest
                   .connect()
@@ -47,7 +51,7 @@ public final class ClientHttpsHandler implements Handler<HttpServerRequest> {
                         serverResponse.setStatusCode(clientResponse.statusCode());
                         serverResponse.setStatusMessage(clientResponse.statusMessage());
                         clientResponse.headers().forEach(serverResponse::putHeader);
-                        if (clientResponse.statusCode() == 200) {
+                        if (clientResponse.statusCode() == HttpResponseStatus.OK.code()) {
                           serverRequest
                               .toNetSocket()
                               .onSuccess(

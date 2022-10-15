@@ -28,7 +28,8 @@ public final class App extends AbstractVerticle {
   private final JsonObject config;
 
   private HttpServer server;
-  private HttpClient client;
+  private HttpClient httpClient;
+  private HttpClient httpsClient;
 
   App(@NonNull JsonObject config) {
     this.config = config;
@@ -39,7 +40,7 @@ public final class App extends AbstractVerticle {
     JsonObject config = new JsonObject().put("remoteHost", "127.0.0.1").put("remotePort", 34273);
     // JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
-      log.debug("Load config successfully:{}{}", System.lineSeparator(), config.toString());
+      log.debug("Load config successfully:{}{}", Utils.lineSeparator(), config);
     }
     Vertx vertx =
         Vertx.vertx(
@@ -60,8 +61,26 @@ public final class App extends AbstractVerticle {
         });
   }
 
-  private HttpClientOptions clientOptions() {
-    JsonObject clientOptions = config.getJsonObject("proxyClient");
+  private HttpClientOptions httpClientOptions() {
+    JsonObject clientOptions = config.getJsonObject("httpClient");
+    if (clientOptions != null) {
+      return new HttpClientOptions(clientOptions);
+    } else {
+      return Utils.enableTcpOptimizationWhenAvailable(
+          getVertx(),
+          new HttpClientOptions()
+              .setUseAlpn(true)
+              .setProtocolVersion(HttpVersion.HTTP_2)
+              .setHttp2MaxPoolSize(16)
+              .setHttp2KeepAliveTimeout(60)
+              .setTryUseCompression(true)
+              .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
+              .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
+    }
+  }
+
+  private HttpClientOptions httpsClientOptions() {
+    JsonObject clientOptions = config.getJsonObject("httpsClient");
     if (clientOptions != null) {
       return new HttpClientOptions(clientOptions);
     } else {
@@ -69,7 +88,6 @@ public final class App extends AbstractVerticle {
           getVertx(),
           new HttpClientOptions()
               .setMaxPoolSize(128)
-              .setTryUseCompression(true)
               .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
               .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
     }
@@ -89,15 +107,17 @@ public final class App extends AbstractVerticle {
   public void start(Promise<Void> startPromise) {
     AddressPicker addressPicker =
         AddressPicker.ofStatic(config.getInteger("remotePort", -1), config.getString("remoteHost"));
-    HttpClient client = getVertx().createHttpClient(clientOptions());
+    HttpClient httpClient = getVertx().createHttpClient(httpClientOptions());
+    HttpClient httpsClient = getVertx().createHttpClient(httpsClientOptions());
     HttpServer server = getVertx().createHttpServer(serverOptions());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
-            new ClientHttpHandler(getVertx(), client, addressPicker),
-            new ClientHttpsHandler(client, addressPicker));
+            new ClientHttpHandler(getVertx(), httpClient, addressPicker),
+            new ClientHttpsHandler(httpsClient, addressPicker));
     server.requestHandler(requestHandler);
 
-    this.client = client;
+    this.httpClient = httpClient;
+    this.httpsClient = httpsClient;
     this.server = server;
 
     server.listen(
@@ -114,18 +134,35 @@ public final class App extends AbstractVerticle {
   @Override
   public void stop(Promise<Void> stopPromise) {
     if (server != null) {
-      server.close(
-          result -> {
-            if (client != null) {
-              client.close(stopPromise);
-            } else {
-              stopPromise.handle(result);
-            }
-          });
-    } else if (client != null) {
-      client.close(stopPromise);
+      server.close(result -> closeClients(stopPromise));
     } else {
-      stopPromise.tryComplete();
+      closeClients(stopPromise);
     }
+  }
+
+  private void closeClients(Promise<Void> promise) {
+    HttpClient httpClient = this.httpClient;
+    HttpClient httpsClient = this.httpsClient;
+    if (httpClient != null && httpsClient != null) {
+      CompositeFuture.all(httpClient.close(), httpsClient.close())
+          .onComplete(
+              result -> {
+                if (result.succeeded()) {
+                  promise.tryComplete();
+                } else {
+                  promise.tryFail(result.cause());
+                }
+              });
+      return;
+    }
+    if (httpClient != null) {
+      httpClient.close(promise);
+      return;
+    }
+    if (httpsClient != null) {
+      httpsClient.close(promise);
+      return;
+    }
+    promise.tryComplete();
   }
 }

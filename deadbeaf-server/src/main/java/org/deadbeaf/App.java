@@ -40,7 +40,7 @@ public final class App extends AbstractVerticle {
     JsonObject config = new JsonObject();
     // JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
-      log.debug("Load config successfully:{}{}", System.lineSeparator(), config.toString());
+      log.debug("Load config successfully:{}{}", Utils.lineSeparator(), config);
     }
     Vertx vertx =
         Vertx.vertx(
@@ -155,7 +155,8 @@ public final class App extends AbstractVerticle {
       return new HttpServerOptions(serverOptions);
     } else {
       return Utils.enableTcpOptimizationWhenAvailable(
-          getVertx(), new HttpServerOptions().setDecompressionSupported(true).setPort(34273));
+          getVertx(),
+          new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true).setPort(34273));
     }
   }
 }
