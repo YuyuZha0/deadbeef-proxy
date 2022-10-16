@@ -1,5 +1,7 @@
 package org.deadbeaf.server;
 
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -7,6 +9,7 @@ import io.vertx.core.net.NetClient;
 import io.vertx.core.net.SocketAddress;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.deadbeaf.route.AddressPicker;
 import org.deadbeaf.util.Utils;
 
@@ -22,8 +25,9 @@ public final class ServerHttpsHandler implements Handler<HttpServerRequest> {
 
   @Override
   public void handle(HttpServerRequest serverRequest) {
-    if (serverRequest.method() != HttpMethod.CONNECT) {
-      serverRequest.end();
+    if (serverRequest.method() != HttpMethod.CONNECT
+        || StringUtils.isEmpty(serverRequest.getHeader(HttpHeaderNames.HOST))) {
+      serverRequest.response().setStatusCode(HttpResponseStatus.FORBIDDEN.code()).end();
       return;
     }
     SocketAddress address = addressPicker.apply(serverRequest);

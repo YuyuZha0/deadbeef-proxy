@@ -8,12 +8,19 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.RequestOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeaf.protocol.HttpHeaderDecoder;
 import org.deadbeaf.protocol.HttpProto;
 import org.deadbeaf.protocol.Prefix;
 import org.deadbeaf.protocol.ProxyStreamPrefixResolver;
+import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
 import java.io.IOException;
@@ -46,7 +53,7 @@ public final class ServerHttpHandler implements Handler<HttpServerRequest> {
                 return Future.failedFuture(e);
               }
               if (log.isDebugEnabled()) {
-                log.debug("{} :{}{}", Utils.rightArrow(), Utils.lineSeparator(), request);
+                log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), request);
               }
               Promise<HttpClientRequest> promise = Promise.promise();
               httpClient.request(
@@ -54,7 +61,7 @@ public final class ServerHttpHandler implements Handler<HttpServerRequest> {
                   ar -> {
                     if (ar.succeeded()) {
                       HttpClientRequest clientRequest = ar.result();
-                      Utils.handleClosing(serverRequest, clientRequest);
+                      clientRequest.exceptionHandler(errorHandler);
                       promise.tryComplete(clientRequest);
                     } else {
                       promise.tryFail(ar.cause());
@@ -80,7 +87,7 @@ public final class ServerHttpHandler implements Handler<HttpServerRequest> {
     long contentLength = Utils.contentLength(clientResponse.headers());
     HttpProto.Response proto = encoder.apply(clientResponse);
     if (log.isDebugEnabled()) {
-      log.debug("{} :{}{}", Utils.leftArrow(), Utils.lineSeparator(), proto);
+      log.debug("{} :{}{}", Constants.leftArrow(), Constants.lineSeparator(), proto);
     }
     putHeaders(proto, contentLength, serverResponse);
     Buffer prefixData = Prefix.serializeToBuffer(proto);
@@ -125,6 +132,7 @@ public final class ServerHttpHandler implements Handler<HttpServerRequest> {
     }
     requestOptions.setAbsoluteURI(request.getAbsoluteUri());
     requestOptions.setMethod(HttpMethod.valueOf(request.getMethod().name()));
+    requestOptions.setTimeout(Constants.requestTimeout());
     return requestOptions;
   }
 }

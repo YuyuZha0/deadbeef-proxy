@@ -9,11 +9,11 @@ import com.google.common.base.Throwables;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.AsciiString;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.NoStackTraceThrowable;
@@ -30,7 +30,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class Utils {
 
@@ -59,64 +58,40 @@ public final class Utils {
     return 0L;
   }
 
-  public static Handler<Throwable> createErrorHandler(
-      @NonNull HttpServerResponse response, @NonNull Logger logger) {
-    AtomicBoolean executed = new AtomicBoolean(false);
-    return (Throwable cause) -> {
-      if (response.closed() || response.ended()) {
-        logger.warn("The response already ended, omitted exception: ", cause);
-        return;
-      }
-      if (!executed.compareAndSet(false, true)) {
-        logger.warn("Error handler called multiple times, exception: ", cause);
-        return;
-      }
-      Buffer msg;
-      if (cause instanceof NoStackTraceThrowable) {
-        msg = Buffer.buffer(cause.getMessage(), "UTF-8");
-      } else {
-        msg = Buffer.buffer(Throwables.getStackTraceAsString(cause), "UTF-8");
-      }
-      response
-          .setStatusCode(
-              (cause instanceof TimeoutException)
-                  ? HttpResponseStatus.GATEWAY_TIMEOUT.code()
-                  : HttpResponseStatus.BAD_GATEWAY.code())
-          .putHeader(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.TEXT_PLAIN)
-          .putHeader(HttpHeaderNames.CONTENT_LENGTH, Integer.toString(msg.length()))
-          .end(msg);
-    };
+  public static <T> Handler<T> atMostOnce(Handler<? super T> original) {
+    return new AtMostOnceHandler<>(original);
   }
 
-  public static void handleClosing(
-      @NonNull HttpServerRequest downStreamRequest, @NonNull HttpClientRequest upperStreamRequest) {
-    upperStreamRequest
-        .connection()
-        .closeHandler(
-            v -> {
-              HttpServerResponse response = downStreamRequest.response();
-              if (response.closed() || response.ended()) {
-                return;
-              }
-              response.setStatusCode(HttpResponseStatus.BAD_GATEWAY.code()).end();
-            });
+  public static Handler<Throwable> createErrorHandler(
+      @NonNull HttpServerResponse response, @NonNull Logger logger) {
+    return atMostOnce(
+        (Throwable cause) -> {
+          if (response.closed() || response.ended()) {
+            logger.warn("The response already ended, omitted exception: ", cause);
+            return;
+          }
+          Buffer msg;
+          if (cause instanceof NoStackTraceThrowable) {
+            msg = Buffer.buffer(cause.getMessage(), "UTF-8");
+          } else {
+            msg = Buffer.buffer(Throwables.getStackTraceAsString(cause), "UTF-8");
+          }
+          response
+              .setStatusCode(
+                  (cause instanceof TimeoutException)
+                      ? HttpResponseStatus.GATEWAY_TIMEOUT.code()
+                      : HttpResponseStatus.BAD_GATEWAY.code())
+              .putHeader(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.TEXT_PLAIN)
+              .putHeader(HttpHeaderNames.CONTENT_LENGTH, Integer.toString(msg.length()))
+              .end(msg);
+        });
   }
 
   public static void tunnel(NetSocket alice, NetSocket bob) {
     new SocketTunnel(alice, bob).open();
   }
 
-  public static String lineSeparator() {
-    return System.lineSeparator();
-  }
 
-  public static String rightArrow() {
-    return "[-->]";
-  }
-
-  public static String leftArrow() {
-    return "[<--]";
-  }
 
   public static void debugRequest(HttpServerRequest request, Logger logger) {
     if (logger.isDebugEnabled()) {
@@ -159,4 +134,5 @@ public final class Utils {
     }
     return options;
   }
+
 }

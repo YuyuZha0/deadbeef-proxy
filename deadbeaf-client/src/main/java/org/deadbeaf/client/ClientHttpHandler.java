@@ -4,20 +4,30 @@ import com.google.common.base.Strings;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.http.*;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientRequest;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpMethod;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpServerResponse;
+import io.vertx.core.http.HttpVersion;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.deadbeaf.auth.ProxyAuthenticationGenerator;
 import org.deadbeaf.protocol.HttpHeaderDecoder;
 import org.deadbeaf.protocol.HttpProto;
 import org.deadbeaf.protocol.Prefix;
 import org.deadbeaf.protocol.ProxyStreamPrefixResolver;
 import org.deadbeaf.route.AddressPicker;
+import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
 import java.io.IOException;
@@ -32,11 +42,17 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
   private final HttpClient httpClient;
   private final AddressPicker addressPicker;
 
+  private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
+
   public ClientHttpHandler(
-      @NonNull Vertx vertx, @NonNull HttpClient httpClient, @NonNull AddressPicker addressPicker) {
+      @NonNull Vertx vertx,
+      @NonNull HttpClient httpClient,
+      @NonNull AddressPicker addressPicker,
+      @NonNull ProxyAuthenticationGenerator generator) {
     this.proxyStreamPrefixResolver = new ProxyStreamPrefixResolver<>(vertx);
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
+    this.proxyAuthenticationGenerator = generator;
   }
 
   private boolean should100Continue(HttpServerRequest request) {
@@ -54,7 +70,7 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
         }
       } else {
         // the server cannot meet the expectation, we only know about 100-continue
-        request.response().setStatusCode(417).end();
+        request.response().setStatusCode(HttpResponseStatus.EXPECTATION_FAILED.code()).end();
         return false;
       }
     }
@@ -69,12 +85,15 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
     long contentLength = Utils.contentLength(serverRequest.headers());
     HttpProto.Request proto = encoder.apply(serverRequest);
     if (log.isDebugEnabled()) {
-      log.debug("{} :{}{}", Utils.rightArrow(), Utils.lineSeparator(), proto);
+      log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), proto);
     }
+
     RequestOptions requestOptions = new RequestOptions();
     requestOptions.setMethod(HttpMethod.POST);
     requestOptions.setServer(addressPicker.apply(serverRequest));
+    requestOptions.setTimeout(Constants.requestTimeout());
     putHeaders(proto, contentLength, requestOptions);
+
     serverRequest.pause();
     HttpServerResponse serverResponse = serverRequest.response();
     Handler<Throwable> errorHandler = Utils.createErrorHandler(serverResponse, log);
@@ -82,7 +101,7 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
         .request(requestOptions)
         .onSuccess(
             clientRequest -> {
-              Utils.handleClosing(serverRequest, clientRequest);
+              clientRequest.exceptionHandler(errorHandler);
               Buffer prefixData = Prefix.serializeToBuffer(proto);
               // Only exact 0 means empty body!
               if (contentLength == 0) {
@@ -124,9 +143,11 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
       Handler<Throwable> errorHandler) {
     if (log.isDebugEnabled()) {
       log.debug(
-          "Proxy server response headers:{}{}", Utils.lineSeparator(), clientResponse.headers());
+          "Proxy server response headers:{}{}",
+          Constants.lineSeparator(),
+          clientResponse.headers());
     }
-    if (clientResponse.statusCode() != 200) {
+    if (clientResponse.statusCode() != HttpResponseStatus.OK.code()) {
       clientResponse.end();
       errorHandler.handle(
           new NoStackTraceThrowable(
@@ -145,7 +166,7 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
                 return Future.failedFuture(e);
               }
               if (log.isDebugEnabled()) {
-                log.debug("{} :{}{}", Utils.leftArrow(), Utils.lineSeparator(), response);
+                log.debug("{} :{}{}", Constants.leftArrow(), Constants.lineSeparator(), response);
               }
               fillHeaders(serverResponse, response);
               return Future.succeededFuture(serverResponse);
@@ -180,6 +201,7 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
 
   private void putHeaders(
       HttpProto.Request request, long contentLength, RequestOptions requestOptions) {
+    requestOptions.putHeader(Constants.authHeaderName(), proxyAuthenticationGenerator.get());
     requestOptions.putHeader(
         HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_OCTET_STREAM);
     if (contentLength >= 0) {

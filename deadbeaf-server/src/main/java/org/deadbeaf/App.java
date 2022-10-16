@@ -2,19 +2,36 @@ package org.deadbeaf;
 
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
-import io.vertx.core.*;
-import io.vertx.core.http.*;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeaf.auth.ProxyAuthenticationValidator;
 import org.deadbeaf.server.ProxyServerRequestHandler;
 import org.deadbeaf.server.ServerHttpHandler;
 import org.deadbeaf.server.ServerHttpsHandler;
+import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -37,10 +54,9 @@ public final class App extends AbstractVerticle {
   }
 
   public static void main(String[] args) {
-    JsonObject config = new JsonObject();
-    // JsonObject config = Utils.loadConfig(args[0]);
+    JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
-      log.debug("Load config successfully:{}{}", Utils.lineSeparator(), config);
+      log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
     Vertx vertx =
         Vertx.vertx(
@@ -61,6 +77,21 @@ public final class App extends AbstractVerticle {
         });
   }
 
+  private ProxyAuthenticationValidator validator() {
+    JsonArray entries = config.getJsonArray("auth");
+    int len = entries.size();
+    List<Map.Entry<String, String>> list = new ArrayList<>();
+    for (int i = 0; i < len; ++i) {
+      JsonObject object = entries.getJsonObject(i);
+      if (object != null) {
+        list.add(
+            new AbstractMap.SimpleImmutableEntry<>(
+                object.getString("secretId"), object.getString("secretKey")));
+      }
+    }
+    return ProxyAuthenticationValidator.fromEntries(list);
+  }
+
   @Override
   public void start(Promise<Void> startPromise) {
     HttpClient httpClient = getVertx().createHttpClient(httpClientOptions());
@@ -69,7 +100,9 @@ public final class App extends AbstractVerticle {
 
     Handler<HttpServerRequest> requestHandler =
         new ProxyServerRequestHandler(
-            new ServerHttpHandler(vertx, httpClient), new ServerHttpsHandler(netClient));
+            new ServerHttpHandler(vertx, httpClient),
+            new ServerHttpsHandler(netClient),
+            validator());
     server.requestHandler(requestHandler);
 
     this.httpClient = httpClient;

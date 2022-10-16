@@ -2,16 +2,29 @@ package org.deadbeaf;
 
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
-import io.vertx.core.*;
-import io.vertx.core.http.*;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.HttpVersion;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeaf.auth.ProxyAuthenticationGenerator;
 import org.deadbeaf.client.ClientHttpHandler;
 import org.deadbeaf.client.ClientHttpsHandler;
 import org.deadbeaf.client.ProxyClientRequestHandler;
 import org.deadbeaf.route.AddressPicker;
+import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
 import java.util.concurrent.TimeUnit;
@@ -37,10 +50,9 @@ public final class App extends AbstractVerticle {
 
   public static void main(String[] args) {
 
-    JsonObject config = new JsonObject().put("remoteHost", "127.0.0.1").put("remotePort", 34273);
-    // JsonObject config = Utils.loadConfig(args[0]);
+    JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
-      log.debug("Load config successfully:{}{}", Utils.lineSeparator(), config);
+      log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
     Vertx vertx =
         Vertx.vertx(
@@ -107,13 +119,17 @@ public final class App extends AbstractVerticle {
   public void start(Promise<Void> startPromise) {
     AddressPicker addressPicker =
         AddressPicker.ofStatic(config.getInteger("remotePort", -1), config.getString("remoteHost"));
+    ProxyAuthenticationGenerator proxyAuthenticationGenerator =
+        new ProxyAuthenticationGenerator(
+            config.getString("secretId"), config.getString("secretKey"));
     HttpClient httpClient = getVertx().createHttpClient(httpClientOptions());
     HttpClient httpsClient = getVertx().createHttpClient(httpsClientOptions());
     HttpServer server = getVertx().createHttpServer(serverOptions());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
-            new ClientHttpHandler(getVertx(), httpClient, addressPicker),
-            new ClientHttpsHandler(httpsClient, addressPicker));
+            new ClientHttpHandler(
+                getVertx(), httpClient, addressPicker, proxyAuthenticationGenerator),
+            new ClientHttpsHandler(httpsClient, addressPicker, proxyAuthenticationGenerator));
     server.requestHandler(requestHandler);
 
     this.httpClient = httpClient;

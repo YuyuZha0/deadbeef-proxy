@@ -1,6 +1,5 @@
 package org.deadbeaf.client;
 
-import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
@@ -23,7 +22,6 @@ public final class ProxyClientRequestHandler implements Handler<HttpServerReques
   @Override
   public void handle(HttpServerRequest request) {
     Utils.debugRequest(request, log);
-    request.headers().remove(HttpHeaderNames.PROXY_AUTHORIZATION);
     if (request.method() == HttpMethod.CONNECT) {
       httpsHandler.handle(request);
     } else {

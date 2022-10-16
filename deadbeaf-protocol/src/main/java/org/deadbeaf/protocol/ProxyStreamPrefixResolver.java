@@ -5,7 +5,12 @@ import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.util.ReferenceCountUtil;
-import io.vertx.core.*;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.buffer.impl.VertxByteBufAllocator;
 import io.vertx.core.impl.ContextInternal;
@@ -17,9 +22,10 @@ import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeaf.util.Constants;
+import org.deadbeaf.util.Utils;
 
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
 @Slf4j
@@ -100,28 +106,25 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
 
   private Handler<AsyncResult<Void>> copyHandler(
       W dst, Handler<? super W> dstHandler, Promise<Void> promise) {
-    AtomicBoolean executed = new AtomicBoolean(false);
-    return result -> {
-      if (!executed.compareAndSet(false, true)) {
-        return;
-      }
-      if (dstHandler != null) {
-        if (log.isDebugEnabled()) {
-          log.debug("Invoke post actions on: {}", dst);
-        }
-        try {
-          dstHandler.handle(dst);
-        } catch (Throwable e) {
-          promise.tryFail(e);
-          return;
-        }
-      }
-      if (result.succeeded()) {
-        promise.tryComplete();
-      } else {
-        promise.tryFail(result.cause());
-      }
-    };
+    return Utils.atMostOnce(
+        result -> {
+          if (dstHandler != null) {
+            if (log.isDebugEnabled()) {
+              log.debug("Invoke post actions on: {}", dst);
+            }
+            try {
+              dstHandler.handle(dst);
+            } catch (Throwable e) {
+              promise.tryFail(e);
+              return;
+            }
+          }
+          if (result.succeeded()) {
+            promise.tryComplete();
+          } else {
+            promise.tryFail(result.cause());
+          }
+        });
   }
 
   private void copy(
@@ -233,7 +236,7 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
       if (log.isDebugEnabled()) {
         log.info(
             "Incoming bytes:{}{}",
-            System.lineSeparator(),
+            Constants.lineSeparator(),
             ByteBufUtil.prettyHexDump(event.getByteBuf()));
       }
       int len1 = tempBuf.writerIndex();

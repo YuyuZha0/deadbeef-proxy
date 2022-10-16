@@ -8,8 +8,6 @@ import io.vertx.core.net.NetSocket;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
 @Slf4j
 final class SocketTunnel {
 
@@ -57,17 +55,14 @@ final class SocketTunnel {
 
   private void handleClose(NetSocket src, NetSocket dest) {
     String name = Strings.lenientFormat("[%s => %s]", src.remoteAddress(), dest.remoteAddress());
-    AtomicBoolean closed = new AtomicBoolean(false);
     src.closeHandler(
-        v -> {
-          if (!closed.compareAndSet(false, true)) {
-            return;
-          }
-          dest.closeHandler(null);
-          dest.close();
-          if (log.isDebugEnabled()) {
-            log.debug("Closing tunnel: {}", name);
-          }
-        });
+        Utils.atMostOnce(
+            v -> {
+              dest.closeHandler(null);
+              dest.close();
+              if (log.isDebugEnabled()) {
+                log.debug("Closing tunnel: {}", name);
+              }
+            }));
   }
 }

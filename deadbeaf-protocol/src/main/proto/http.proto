@@ -151,3 +151,10 @@ message Response{
   optional string status_message = 2;
   optional Headers headers = 3;
 }
+
+message ProxyAuthentication{
+  optional string secret_id = 1;
+  optional uint64 timestamp = 2;
+  optional bytes nonce = 3;
+  optional bytes signature = 4;
+}
