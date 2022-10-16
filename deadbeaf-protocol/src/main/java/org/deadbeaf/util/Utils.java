@@ -9,7 +9,6 @@ import com.google.common.base.Throwables;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.util.AsciiString;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -91,8 +90,6 @@ public final class Utils {
     new SocketTunnel(alice, bob).open();
   }
 
-
-
   public static void debugRequest(HttpServerRequest request, Logger logger) {
     if (logger.isDebugEnabled()) {
       String msg =
@@ -134,5 +131,4 @@ public final class Utils {
     }
     return options;
   }
-
 }
