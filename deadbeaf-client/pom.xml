@@ -52,10 +52,6 @@
             <artifactId>vertx-unit</artifactId>
         </dependency>
         <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-web</artifactId>
-        </dependency>
-        <dependency>
             <groupId>org.deadbeaf</groupId>
             <artifactId>deadbeaf-protocol</artifactId>
             <version>${revision}</version>
