@@ -31,10 +31,7 @@ public final class ProxyServerRequestHandler implements Handler<HttpServerReques
   public void handle(HttpServerRequest request) {
     Utils.debugRequest(request, log);
     if (!validator.test(request.getHeader(Constants.authHeaderName()))) {
-      request
-          .response()
-          .setStatusCode(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED.code())
-          .end();
+      request.response().setStatusCode(HttpResponseStatus.FORBIDDEN.code()).end();
       return;
     }
     if (request.method() == HttpMethod.CONNECT) {

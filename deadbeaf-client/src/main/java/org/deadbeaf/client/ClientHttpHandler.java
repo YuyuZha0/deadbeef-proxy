@@ -1,6 +1,5 @@
 package org.deadbeaf.client;
 
-import com.google.common.base.Strings;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -17,7 +16,6 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
-import io.vertx.core.impl.NoStackTraceThrowable;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -148,11 +146,11 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
           clientResponse.headers());
     }
     if (clientResponse.statusCode() != HttpResponseStatus.OK.code()) {
-      clientResponse.end();
-      errorHandler.handle(
-          new NoStackTraceThrowable(
-              Strings.lenientFormat(
-                  "Upper stream return status code: %s.", clientResponse.statusCode())));
+      serverResponse
+          .setStatusCode(clientResponse.statusCode())
+          .setStatusMessage(clientResponse.statusMessage());
+      clientResponse.headers().forEach(serverResponse::putHeader);
+      serverResponse.end();
       return;
     }
     proxyStreamPrefixResolver

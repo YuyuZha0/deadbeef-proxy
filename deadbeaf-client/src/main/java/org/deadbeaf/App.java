@@ -49,13 +49,7 @@ public final class App extends AbstractVerticle {
   }
 
   public static void main(String[] args) {
-    JsonObject config =
-        new JsonObject()
-            .put("remoteHost", "45.77.135.167")
-            .put("remotePort", 14483)
-            .put("secretId", "zH2QmqGRmTnGpCAC")
-            .put("secreKey", "UN5aAHQMf-ZXRKG!ZM?z8K_xm|R8agJ!");
-    // JsonObject config = Utils.loadConfig(args[0]);
+    JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
       log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
@@ -89,7 +83,6 @@ public final class App extends AbstractVerticle {
               .setUseAlpn(true)
               .setProtocolVersion(HttpVersion.HTTP_2)
               .setHttp2MaxPoolSize(16)
-              .setHttp2KeepAliveTimeout(60)
               .setTryUseCompression(true)
               .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
               .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));

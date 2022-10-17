@@ -1,7 +1,5 @@
 package org.deadbeaf.util;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
@@ -9,6 +7,7 @@ import com.google.common.base.Throwables;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.concurrent.FastThreadLocal;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
 import io.vertx.core.Vertx;
@@ -22,18 +21,26 @@ import io.vertx.core.net.TCPSSLOptions;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Map;
 import java.util.concurrent.TimeoutException;
 
 public final class Utils {
 
-  private static final ObjectMapper YAML_MAPPER =
-      new YAMLMapper().registerModule(new VertxJsonModule());
+  // The yaml instance is not thread-safe!
+  private static final FastThreadLocal<Yaml> YAML_FAST_THREAD_LOCAL =
+      new FastThreadLocal<Yaml>() {
+        @Override
+        protected Yaml initialValue() {
+          return new Yaml();
+        }
+      };
 
   private Utils() {
     throw new IllegalStateException();
@@ -104,10 +111,7 @@ public final class Utils {
     }
   }
 
-  public static ObjectMapper yamlMapper() {
-    return YAML_MAPPER;
-  }
-
+  @SuppressWarnings("unchecked")
   public static JsonObject loadConfig(String pathStr) {
     Preconditions.checkArgument(StringUtils.isNotEmpty(pathStr), "empty config path!");
     Path path = Paths.get(pathStr);
@@ -116,7 +120,10 @@ public final class Utils {
         "Illegal config path: %s",
         pathStr);
     try (InputStream inputStream = Files.newInputStream(path)) {
-      return yamlMapper().readValue(inputStream, JsonObject.class);
+      Yaml yaml = YAML_FAST_THREAD_LOCAL.get();
+      Object load = yaml.load(inputStream);
+      Preconditions.checkArgument(load instanceof Map, "%s can't be casted to Map!", load);
+      return new JsonObject((Map<String, Object>) load);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
