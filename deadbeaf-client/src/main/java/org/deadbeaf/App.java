@@ -49,8 +49,13 @@ public final class App extends AbstractVerticle {
   }
 
   public static void main(String[] args) {
-
-    JsonObject config = Utils.loadConfig(args[0]);
+    JsonObject config =
+        new JsonObject()
+            .put("remoteHost", "45.77.135.167")
+            .put("remotePort", 14483)
+            .put("secretId", "zH2QmqGRmTnGpCAC")
+            .put("secreKey", "UN5aAHQMf-ZXRKG!ZM?z8K_xm|R8agJ!");
+    // JsonObject config = Utils.loadConfig(args[0]);
     if (log.isDebugEnabled()) {
       log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
