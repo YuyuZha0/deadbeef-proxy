@@ -10,14 +10,12 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.vertx.core.Handler;
 import io.vertx.core.MultiMap;
-import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetSocket;
-import io.vertx.core.net.TCPSSLOptions;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -127,15 +125,5 @@ public final class Utils {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-  }
-
-  public static <T extends TCPSSLOptions> T enableTcpOptimizationWhenAvailable(
-      Vertx vertx, T options) {
-    if (vertx.isNativeTransportEnabled()) {
-      options.setTcpFastOpen(true);
-      options.setTcpNoDelay(true);
-      options.setTcpQuickAck(true);
-    }
-    return options;
   }
 }

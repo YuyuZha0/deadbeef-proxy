@@ -1,14 +1,7 @@
 package org.deadbeaf;
 
-import io.netty.util.internal.logging.InternalLoggerFactory;
-import io.netty.util.internal.logging.Slf4JLoggerFactory;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import io.vertx.core.VertxOptions;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
@@ -16,77 +9,41 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
-import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 import org.deadbeaf.auth.ProxyAuthenticationValidator;
+import org.deadbeaf.bootstrap.Bootstrap;
+import org.deadbeaf.bootstrap.ProxyVerticle;
 import org.deadbeaf.server.ProxyServerRequestHandler;
 import org.deadbeaf.server.ServerHttpHandler;
 import org.deadbeaf.server.ServerHttpsHandler;
-import org.deadbeaf.util.Constants;
-import org.deadbeaf.util.Utils;
 
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-public final class App extends AbstractVerticle {
+public final class App extends ProxyVerticle {
 
-  static {
-    System.setProperty(
-        "vertx.logger-delegate-factory-class-name", SLF4JLogDelegateFactory.class.getName());
-    InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
-  }
-
-  private final JsonObject config;
-
-  private HttpServer server;
-  private HttpClient httpClient;
-  private NetClient netClient;
-
-  App(@NonNull JsonObject config) {
-    this.config = config;
+  App(JsonObject config) {
+    super(config);
   }
 
   public static void main(String[] args) {
-    JsonObject config = Utils.loadConfig(args[0]);
-    if (log.isDebugEnabled()) {
-      log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
-    }
-    Vertx vertx =
-        Vertx.vertx(
-            new VertxOptions()
-                .setPreferNativeTransport(
-                    config.getBoolean("preferNativeTransport", Boolean.TRUE)));
-    vertx.deployVerticle(
-        () -> new App(config),
-        new DeploymentOptions(),
-        result -> {
-          String deployID = result.result();
-          if (result.succeeded()) {
-            log.info("Deploy verticle successfully: {}", deployID);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> vertx.undeploy(deployID)));
-          } else {
-            log.error("Deploy verticle with unexpected exception: ", result.cause());
-          }
-        });
+    Bootstrap.bootstrap(App::new, args);
   }
 
-  private ProxyAuthenticationValidator validator() {
-    JsonArray entries = config.getJsonArray("auth");
+  private ProxyAuthenticationValidator createValidator() {
+    JsonArray entries = getConfig().getJsonArray("auth");
     int len = entries.size();
     List<Map.Entry<String, String>> list = new ArrayList<>();
     for (int i = 0; i < len; ++i) {
       JsonObject object = entries.getJsonObject(i);
       if (object != null) {
-        list.add(
-            new AbstractMap.SimpleImmutableEntry<>(
-                object.getString("secretId"), object.getString("secretKey")));
+        list.add(Pair.of(object.getString("secretId"), object.getString("secretKey")));
       }
     }
     return ProxyAuthenticationValidator.fromEntries(list);
@@ -102,17 +59,18 @@ public final class App extends AbstractVerticle {
         new ProxyServerRequestHandler(
             new ServerHttpHandler(vertx, httpClient),
             new ServerHttpsHandler(netClient),
-            validator());
+            createValidator());
     server.requestHandler(requestHandler);
 
-    this.httpClient = httpClient;
-    this.netClient = netClient;
-    this.server = server;
+    registerCloseHook(server::close);
+    registerCloseHook(netClient::close);
+    registerCloseHook(httpClient::close);
 
     server.listen(
+        getConfig().getInteger("severPort", 14483),
         result -> {
           if (result.succeeded()) {
-            log.info("Start Http server listening on port: {}", result.result().actualPort());
+            log.info("Start proxy server listening on port: {}", result.result().actualPort());
             startPromise.tryComplete();
           } else {
             startPromise.tryFail(result.cause());
@@ -120,48 +78,12 @@ public final class App extends AbstractVerticle {
         });
   }
 
-  @Override
-  public void stop(Promise<Void> stopPromise) {
-    if (server != null) {
-      server.close(result -> closeClients(stopPromise));
-    } else {
-      closeClients(stopPromise);
-    }
-  }
-
-  private void closeClients(Promise<Void> promise) {
-    HttpClient httpClient = this.httpClient;
-    NetClient netClient = this.netClient;
-    if (httpClient != null && netClient != null) {
-      CompositeFuture.all(httpClient.close(), netClient.close())
-          .onComplete(
-              result -> {
-                if (result.succeeded()) {
-                  promise.tryComplete();
-                } else {
-                  promise.tryFail(result.cause());
-                }
-              });
-      return;
-    }
-    if (httpClient != null) {
-      httpClient.close(promise);
-      return;
-    }
-    if (netClient != null) {
-      netClient.close(promise);
-      return;
-    }
-    promise.tryComplete();
-  }
-
   private HttpClientOptions httpClientOptions() {
-    JsonObject clientOptions = config.getJsonObject("httpClient");
+    JsonObject clientOptions = getConfig().getJsonObject("httpClient");
     if (clientOptions != null) {
       return new HttpClientOptions(clientOptions);
     } else {
-      return Utils.enableTcpOptimizationWhenAvailable(
-          getVertx(),
+      return enableTcpOptimizationWhenAvailable(
           new HttpClientOptions()
               .setMaxPoolSize(128)
               .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
@@ -170,12 +92,11 @@ public final class App extends AbstractVerticle {
   }
 
   private NetClientOptions netClientOptions() {
-    JsonObject clientOptions = config.getJsonObject("netClient");
+    JsonObject clientOptions = getConfig().getJsonObject("netClient");
     if (clientOptions != null) {
       return new NetClientOptions(clientOptions);
     } else {
-      return Utils.enableTcpOptimizationWhenAvailable(
-          getVertx(),
+      return enableTcpOptimizationWhenAvailable(
           new NetClientOptions()
               .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
               .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
@@ -183,13 +104,12 @@ public final class App extends AbstractVerticle {
   }
 
   private HttpServerOptions serverOptions() {
-    JsonObject serverOptions = config.getJsonObject("proxyServer");
+    JsonObject serverOptions = getConfig().getJsonObject("proxyServer");
     if (serverOptions != null) {
       return new HttpServerOptions(serverOptions);
     } else {
-      return Utils.enableTcpOptimizationWhenAvailable(
-          getVertx(),
-          new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true).setPort(34273));
+      return enableTcpOptimizationWhenAvailable(
+          new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true));
     }
   }
 }

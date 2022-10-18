@@ -9,13 +9,11 @@ import lombok.NonNull;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 public final class HttpHeaderEncoder implements Function<MultiMap, HttpProto.Headers> {
 
   private static final Map<String, Descriptors.FieldDescriptor> FIELD_DESCRIPTOR_MAP;
-  private static final Set<String> IGNORE_HEADER_NAMES = Set.of("host");
 
   static {
     List<Descriptors.FieldDescriptor> fieldDescriptors =
