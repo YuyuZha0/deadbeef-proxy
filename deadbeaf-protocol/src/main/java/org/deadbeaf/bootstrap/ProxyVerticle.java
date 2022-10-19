@@ -1,14 +1,11 @@
 package org.deadbeaf.bootstrap;
 
 import com.google.common.collect.ImmutableList;
-import io.netty.util.internal.logging.InternalLoggerFactory;
-import io.netty.util.internal.logging.Slf4JLoggerFactory;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import io.vertx.core.net.TCPSSLOptions;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -21,12 +18,6 @@ import java.util.function.Supplier;
 
 @Slf4j
 public abstract class ProxyVerticle extends AbstractVerticle {
-
-  static {
-    System.setProperty(
-        "vertx.logger-delegate-factory-class-name", SLF4JLogDelegateFactory.class.getName());
-    InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
-  }
 
   @Getter(AccessLevel.PROTECTED)
   private final JsonObject config;
@@ -62,11 +53,11 @@ public abstract class ProxyVerticle extends AbstractVerticle {
           }
           List<Supplier<Future<Void>>> copy = ImmutableList.copyOf(closeHooks);
           closeHooks.clear();
-          closeInOrder(copy, 0, stopPromise);
+          runHooksOrdered(copy, 0, stopPromise);
         });
   }
 
-  private void closeInOrder(
+  private void runHooksOrdered(
       List<Supplier<Future<Void>>> futures, int index, Promise<Void> promise) {
     if (index >= futures.size()) {
       promise.tryComplete();
@@ -84,10 +75,10 @@ public abstract class ProxyVerticle extends AbstractVerticle {
             if (result.failed()) {
               log.error("Executing closeHook with unexpected exception: ", result.cause());
             }
-            closeInOrder(futures, index + 1, promise);
+            runHooksOrdered(futures, index + 1, promise);
           });
     } else {
-      closeInOrder(futures, index + 1, promise);
+      runHooksOrdered(futures, index + 1, promise);
     }
   }
 }

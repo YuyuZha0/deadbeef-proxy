@@ -1,9 +1,12 @@
 package org.deadbeaf.bootstrap;
 
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.Slf4JLoggerFactory;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.cli.CommandLine;
@@ -18,6 +21,12 @@ import java.util.function.Function;
 
 @Slf4j
 public final class Bootstrap {
+
+  static {
+    System.setProperty(
+        "vertx.logger-delegate-factory-class-name", SLF4JLogDelegateFactory.class.getName());
+    InternalLoggerFactory.setDefaultFactory(Slf4JLoggerFactory.INSTANCE);
+  }
 
   private Bootstrap() {
     throw new IllegalStateException();
@@ -40,8 +49,7 @@ public final class Bootstrap {
   }
 
   public static <A extends ProxyVerticle> void bootstrap(
-      @NonNull Function<JsonObject, A> factory, String[] args) {
-    JsonObject config = loadConfig(args);
+      @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
     Vertx vertx =
         Vertx.vertx(
             new VertxOptions()
@@ -60,5 +68,10 @@ public final class Bootstrap {
             log.error("Deploy verticle with unexpected exception: ", result.cause());
           }
         });
+  }
+
+  public static <A extends ProxyVerticle> void bootstrap(
+      @NonNull Function<JsonObject, A> factory, String[] args) {
+    bootstrap(factory, loadConfig(args));
   }
 }

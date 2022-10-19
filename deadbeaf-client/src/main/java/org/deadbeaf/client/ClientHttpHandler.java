@@ -206,8 +206,6 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
       requestOptions.putHeader(
           HttpHeaderNames.CONTENT_LENGTH,
           Long.toString(Prefix.serializeToBufferSize(request) + contentLength));
-    } else {
-      requestOptions.putHeader(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
     }
   }
 }

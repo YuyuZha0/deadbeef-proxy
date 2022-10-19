@@ -28,6 +28,7 @@ public final class App extends ProxyVerticle {
   }
 
   public static void main(String[] args) {
+    // args = new String[] {"-c", "/Users/zhaoyuyu/IdeaProjects/deadbeaf-proxy/client_config.yaml"};
     Bootstrap.bootstrap(App::new, args);
   }
 
