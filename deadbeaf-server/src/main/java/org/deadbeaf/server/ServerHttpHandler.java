@@ -120,8 +120,6 @@ public final class ServerHttpHandler implements Handler<HttpServerRequest> {
       serverResponse.putHeader(
           HttpHeaderNames.CONTENT_LENGTH,
           Long.toString(Prefix.serializeToBufferSize(response) + contentLength));
-    } else {
-      serverResponse.putHeader(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
     }
   }
 
