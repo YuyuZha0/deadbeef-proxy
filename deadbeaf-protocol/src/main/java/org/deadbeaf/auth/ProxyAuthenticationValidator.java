@@ -7,18 +7,23 @@ import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.deadbeaf.protocol.HttpProto;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
-public final class ProxyAuthenticationValidator implements Predicate<String> {
+public final class ProxyAuthenticationValidator
+    implements Predicate<HttpProto.ProxyAuthentication> {
 
   private static final long MAX_TIME_DELTA = TimeUnit.MINUTES.toMillis(15);
   private final ListMultimap<String, HashFunction> storedMap;
@@ -55,8 +60,20 @@ public final class ProxyAuthenticationValidator implements Predicate<String> {
     return new ProxyAuthenticationValidator(builder.build());
   }
 
-  @Override
-  public boolean test(String input) {
+  public static ProxyAuthenticationValidator fromJsonArray(
+      @NonNull JsonArray array, @NonNull String keyName, @NonNull String valueName) {
+    int len = array.size();
+    List<Map.Entry<String, String>> list = new ArrayList<>();
+    for (int i = 0; i < len; ++i) {
+      JsonObject object = array.getJsonObject(i);
+      if (object != null) {
+        list.add(Pair.of(object.getString("secretId"), object.getString("secretKey")));
+      }
+    }
+    return fromEntries(list);
+  }
+
+  public boolean testString(String input) {
     if (StringUtils.isEmpty(input) || !BaseEncoding.base64Url().canDecode(input)) {
       return false;
     }
@@ -68,6 +85,14 @@ public final class ProxyAuthenticationValidator implements Predicate<String> {
       return false;
     }
 
+    return test(proxyAuthentication);
+  }
+
+  @Override
+  public boolean test(HttpProto.ProxyAuthentication proxyAuthentication) {
+    if (proxyAuthentication == null) {
+      return false;
+    }
     long timestamp;
     if (!proxyAuthentication.hasTimestamp()
         || Math.abs((timestamp = proxyAuthentication.getTimestamp()) - System.currentTimeMillis())

@@ -1,6 +1,7 @@
 package org.deadbeaf.auth;
 
 import org.apache.commons.lang3.RandomStringUtils;
+import org.deadbeaf.protocol.HttpProto;
 import org.junit.Test;
 
 import static org.junit.Assert.assertTrue;
@@ -14,8 +15,8 @@ public class ProxyAuthenticationValidatorTest {
       String secretKey = RandomStringUtils.random(32);
       ProxyAuthenticationGenerator generator =
           new ProxyAuthenticationGenerator(secretId, secretKey);
-      String auth = generator.get();
-      System.out.println(auth + ":" + auth.length());
+      HttpProto.ProxyAuthentication auth = generator.get();
+      System.out.println(auth);
       ProxyAuthenticationValidator validator =
           ProxyAuthenticationValidator.simple(secretId, secretKey);
       assertTrue(validator.test(auth));

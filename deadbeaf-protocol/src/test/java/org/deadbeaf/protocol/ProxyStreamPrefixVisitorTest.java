@@ -5,7 +5,6 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.ThreadLocalRandom;
-import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -23,7 +22,7 @@ import org.junit.runner.RunWith;
 import java.util.Arrays;
 
 @RunWith(VertxUnitRunner.class)
-public class ProxyStreamPrefixResolverTest {
+public class ProxyStreamPrefixVisitorTest {
 
   private final int port = 15367;
   @Rule public RunTestOnContext rule = new RunTestOnContext();
@@ -50,29 +49,31 @@ public class ProxyStreamPrefixResolverTest {
     Vertx vertx = rule.vertx();
     Async async = testContext.async();
     HttpServer httpServer = vertx.createHttpServer();
-    ProxyStreamPrefixResolver<HttpServerResponse> resolver = new ProxyStreamPrefixResolver<>(vertx);
+    ProxyStreamPrefixVisitor<HttpServerResponse> resolver = new ProxyStreamPrefixVisitor<>(vertx);
     httpServer.requestHandler(
         request -> {
-          resolver.resolvePrefix(
-              request,
-              data -> {
-                try {
-                  System.out.println(HttpProto.Request.parseFrom(data.getBytes()));
-                } catch (InvalidProtocolBufferException e) {
-                  throw new RuntimeException(e);
-                }
-                HttpServerResponse response = request.response();
-                String contentLen = request.getHeader(HttpHeaderNames.CONTENT_LENGTH);
-                response.putHeader(
-                    HttpHeaderNames.CONTENT_LENGTH,
-                    Integer.toString(Integer.parseInt(contentLen) - data.length() - 8));
-                // .putHeader(HttpHeaderNames.TRANSFER_ENCODING, HttpHeaderValues.CHUNKED);
-                return Future.succeededFuture(response);
-              },
-              r -> {
-                r.end().onComplete(ar -> r.close());
-                System.out.printf("Ended: %s, bytesWritten: %d%n", r.ended(), r.bytesWritten());
-              });
+          resolver
+              .visit(request)
+              .onSuccess(
+                  prefixAndAction -> {
+                    Buffer prefix = prefixAndAction.get();
+                    try {
+                      System.out.println(HttpProto.Request.parseFrom(prefix.getBytes()));
+                    } catch (InvalidProtocolBufferException e) {
+                      throw new RuntimeException(e);
+                    }
+                    HttpServerResponse response = request.response();
+                    String contentLen = request.getHeader(HttpHeaderNames.CONTENT_LENGTH);
+                    response.putHeader(
+                        HttpHeaderNames.CONTENT_LENGTH,
+                        Integer.toString(Integer.parseInt(contentLen) - prefix.length() - 8));
+                    prefixAndAction.accept(
+                        response,
+                        ar -> {
+                          response.end();
+                        });
+                  })
+              .onFailure(testContext::fail);
         });
     HttpClient httpClient = vertx.createHttpClient();
     httpServer

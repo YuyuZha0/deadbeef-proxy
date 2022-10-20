@@ -9,12 +9,14 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.net.NetClient;
+import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeaf.auth.ProxyAuthenticationGenerator;
 import org.deadbeaf.bootstrap.Bootstrap;
 import org.deadbeaf.bootstrap.ProxyVerticle;
-import org.deadbeaf.client.ClientHttpHandler;
-import org.deadbeaf.client.ClientHttpsHandler;
+import org.deadbeaf.client.Http2HttpHandler;
+import org.deadbeaf.client.Http2SocketHandler;
 import org.deadbeaf.client.ProxyClientRequestHandler;
 import org.deadbeaf.route.AddressPicker;
 
@@ -22,6 +24,8 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public final class App extends ProxyVerticle {
+
+  private static final int DEFAULT_TIMEOUT_IN_MILLS = (int) TimeUnit.SECONDS.toMillis(10);
 
   public App(JsonObject config) {
     super(config);
@@ -43,21 +47,20 @@ public final class App extends ProxyVerticle {
               .setProtocolVersion(HttpVersion.HTTP_2)
               .setHttp2MaxPoolSize(16)
               .setTryUseCompression(true)
-              .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
-              .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
+              .setConnectTimeout(DEFAULT_TIMEOUT_IN_MILLS)
+              .setReadIdleTimeout(DEFAULT_TIMEOUT_IN_MILLS));
     }
   }
 
-  private HttpClientOptions httpsClientOptions() {
-    JsonObject clientOptions = getConfig().getJsonObject("httpsClient");
+  private NetClientOptions netClientOptions() {
+    JsonObject clientOptions = getConfig().getJsonObject("netClient");
     if (clientOptions != null) {
-      return new HttpClientOptions(clientOptions);
+      return new NetClientOptions(clientOptions);
     } else {
       return enableTcpOptimizationWhenAvailable(
-          new HttpClientOptions()
-              .setMaxPoolSize(128)
-              .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
-              .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
+          new NetClientOptions()
+              .setReadIdleTimeout(DEFAULT_TIMEOUT_IN_MILLS)
+              .setConnectTimeout(DEFAULT_TIMEOUT_IN_MILLS));
     }
   }
 
@@ -73,23 +76,28 @@ public final class App extends ProxyVerticle {
   @Override
   public void start(Promise<Void> startPromise) {
     JsonObject config = getConfig();
-    AddressPicker addressPicker =
-        AddressPicker.ofStatic(config.getInteger("remotePort", -1), config.getString("remoteHost"));
     ProxyAuthenticationGenerator proxyAuthenticationGenerator =
         new ProxyAuthenticationGenerator(
             config.getString("secretId"), config.getString("secretKey"));
     HttpClient httpClient = getVertx().createHttpClient(httpClientOptions());
-    HttpClient httpsClient = getVertx().createHttpClient(httpsClientOptions());
+    NetClient netClient = getVertx().createNetClient(netClientOptions());
     HttpServer server = getVertx().createHttpServer(serverOptions());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
-            new ClientHttpHandler(
-                getVertx(), httpClient, addressPicker, proxyAuthenticationGenerator),
-            new ClientHttpsHandler(httpsClient, addressPicker, proxyAuthenticationGenerator));
+            new Http2HttpHandler(
+                getVertx(),
+                httpClient,
+                AddressPicker.fromConfig(config, "httpPort", "remoteHost"),
+                proxyAuthenticationGenerator),
+            new Http2SocketHandler(
+                getVertx(),
+                netClient,
+                AddressPicker.fromConfig(config, "httpsPort", "remoteHost"),
+                proxyAuthenticationGenerator));
     server.requestHandler(requestHandler);
 
     registerCloseHook(server::close);
-    registerCloseHook(httpsClient::close);
+    registerCloseHook(netClient::close);
     registerCloseHook(httpClient::close);
 
     server.listen(

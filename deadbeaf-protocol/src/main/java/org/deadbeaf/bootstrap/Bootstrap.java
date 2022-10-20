@@ -17,6 +17,8 @@ import org.apache.commons.cli.ParseException;
 import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 @Slf4j
@@ -32,7 +34,7 @@ public final class Bootstrap {
     throw new IllegalStateException();
   }
 
-  private static JsonObject loadConfig(String[] args) {
+  public static JsonObject loadConfig(String[] args) {
     Options options = new Options().addOption("c", "config", true, "yaml config path");
     CommandLineParser parser = new DefaultParser();
     CommandLine commandLine;
@@ -49,29 +51,45 @@ public final class Bootstrap {
   }
 
   public static <A extends ProxyVerticle> void bootstrap(
-      @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
-    Vertx vertx =
-        Vertx.vertx(
-            new VertxOptions()
-                .setPreferNativeTransport(
-                    config.getBoolean("preferNativeTransport", Boolean.TRUE)));
+      @NonNull Vertx vertx, @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
+    log.info("Native transport enable status: {}", vertx.isNativeTransportEnabled());
+    List<String> closeHooks = new CopyOnWriteArrayList<>();
     vertx.deployVerticle(
         () -> factory.apply(config),
         new DeploymentOptions(),
         result -> {
           String deployID = result.result();
-          log.info("Native transport enable status: {}", vertx.isNativeTransportEnabled());
           if (result.succeeded()) {
             log.info("Deploy verticle successfully: {}", deployID);
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> vertx.undeploy(deployID)));
+            closeHooks.add(result.result());
           } else {
             log.error("Deploy verticle with unexpected exception: ", result.cause());
           }
         });
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  if (!closeHooks.isEmpty()) {
+                    for (String deployId : closeHooks) {
+                      vertx.undeploy(deployId);
+                    }
+                  }
+                }));
   }
 
   public static <A extends ProxyVerticle> void bootstrap(
-      @NonNull Function<JsonObject, A> factory, String[] args) {
+      Function<JsonObject, A> factory, JsonObject config) {
+    Vertx vertx =
+        Vertx.vertx(
+            new VertxOptions()
+                .setPreferNativeTransport(
+                    config.getBoolean("preferNativeTransport", Boolean.TRUE)));
+    bootstrap(vertx, factory, config);
+  }
+
+  public static <A extends ProxyVerticle> void bootstrap(
+      Function<JsonObject, A> factory, String[] args) {
     bootstrap(factory, loadConfig(args));
   }
 }

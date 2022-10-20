@@ -1,7 +1,6 @@
 package org.deadbeaf.protocol;
 
 import com.google.common.base.Strings;
-import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.util.ReferenceCountUtil;
@@ -23,17 +22,15 @@ import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeaf.util.Constants;
-import org.deadbeaf.util.Utils;
 
-import java.util.Objects;
-import java.util.function.Function;
+import java.util.function.BiConsumer;
 
 @Slf4j
-public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
+public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
   private final VertxInternal vertx;
 
-  public ProxyStreamPrefixResolver(@NonNull Vertx vertx) {
+  public ProxyStreamPrefixVisitor(@NonNull Vertx vertx) {
     this.vertx = (VertxInternal) vertx;
   }
 
@@ -55,74 +52,37 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
     }
   }
 
-  public Future<Void> resolvePrefix(
-      ReadStream<Buffer> src, Function<? super Buffer, Future<W>> mapping) {
-    return resolvePrefix(src, mapping, null);
-  }
-
-  @CanIgnoreReturnValue
-  public Future<Void> resolvePrefix(
-      @NonNull ReadStream<Buffer> src,
-      @NonNull Function<? super Buffer, Future<W>> mapping,
-      Handler<? super W> postAction) {
-    if (log.isDebugEnabled()) {
-      log.debug("Start resolving prefix on: {}", src);
-    }
-    ParserHandler parserHandler = new ParserHandler(src);
-    Promise<Void> promise = Promise.promise();
-    parserHandler.parsePrefix(
-        ar -> {
-          if (ar.succeeded()) {
-            ContextInternal context = vertx.getOrCreateContext();
-            Future<W> dstFuture;
-            try {
-              dstFuture =
-                  Objects.requireNonNull(
-                      mapping.apply(ar.result()), "`dstFunc` should not return null!");
-            } catch (Throwable e) {
-              promise.tryFail(e);
-              return;
-            }
-            dstFuture.onComplete(
-                ar1 -> {
-                  if (ar1.succeeded()) {
-                    W dst = ar1.result();
-                    if (log.isDebugEnabled()) {
-                      log.debug("Destination WriteStream constructed successfully: {}", dst);
-                    }
-                    Handler<AsyncResult<Void>> copyHandler = copyHandler(dst, postAction, promise);
-                    context.execute(() -> copy(src, dst, parserHandler, copyHandler));
-                  } else {
-                    promise.tryFail(ar1.cause());
-                  }
-                });
-
-          } else {
-            promise.tryFail(ar.cause());
-          }
-        });
+  public Future<PrefixAndAction<? super W>> visit(ReadStream<Buffer> src) {
+    Promise<PrefixAndAction<? super W>> promise = Promise.promise();
+    visit(src, promise);
     return promise.future();
   }
 
-  private Handler<AsyncResult<Void>> copyHandler(
-      W dst, Handler<? super W> dstHandler, Promise<Void> promise) {
-    return Utils.atMostOnce(
-        result -> {
-          if (dstHandler != null) {
-            if (log.isDebugEnabled()) {
-              log.debug("Invoke post actions on: {}", dst);
-            }
-            try {
-              dstHandler.handle(dst);
-            } catch (Throwable e) {
-              promise.tryFail(e);
-              return;
-            }
-          }
-          if (result.succeeded()) {
-            promise.tryComplete();
+  public void visit(
+      @NonNull ReadStream<Buffer> src,
+      @NonNull Handler<AsyncResult<PrefixAndAction<? super W>>> handler) {
+    if (log.isDebugEnabled()) {
+      log.debug("Start resolving prefix on: {}", src);
+    }
+    PrefixBuffer prefixBuffer = new PrefixBuffer(src);
+    prefixBuffer.parsePrefix(
+        ar -> {
+          if (ar.succeeded()) {
+            Buffer prefix = ar.result();
+            ContextInternal context = vertx.getOrCreateContext();
+            BiConsumer<W, Handler<AsyncResult<Void>>> action =
+                (writeStream, whenWritingFinished) ->
+                    context.runOnContext(
+                        v -> {
+                          try {
+                            copy(src, writeStream, prefixBuffer, whenWritingFinished);
+                          } catch (Throwable cause) {
+                            whenWritingFinished.handle(Future.failedFuture(cause));
+                          }
+                        });
+            handler.handle(Future.succeededFuture(new PrefixAndAction<>(prefix, action)));
           } else {
-            promise.tryFail(result.cause());
+            handler.handle(Future.failedFuture(ar.cause()));
           }
         });
   }
@@ -130,12 +90,12 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
   private void copy(
       ReadStream<Buffer> src,
       W dst,
-      ParserHandler parserHandler,
+      PrefixBuffer prefixBuffer,
       Handler<AsyncResult<Void>> handler) {
 
-    Buffer remaining = parserHandler.readRemaining();
-    parserHandler.clear();
-    if (remaining == null && parserHandler.isStreamEnded()) {
+    Buffer remaining = prefixBuffer.readRemaining();
+    prefixBuffer.clear();
+    if (remaining == null && prefixBuffer.isStreamEnded()) {
       handler.handle(Future.succeededFuture());
       return;
     }
@@ -145,7 +105,7 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
       src.resume();
       return;
     }
-    if (parserHandler.isStreamEnded()) {
+    if (prefixBuffer.isStreamEnded()) {
       dst.write(remaining, handler);
       return;
     }
@@ -165,23 +125,22 @@ public final class ProxyStreamPrefixResolver<W extends WriteStream<Buffer>> {
     return new PipeImpl<>(src).endOnSuccess(false).endOnFailure(false);
   }
 
-  private static final class ParserHandler implements Handler<Buffer> {
+  private static final class PrefixBuffer implements Handler<Buffer> {
 
     private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
-    private final ByteBuf tempBuf =
-        VertxByteBufAllocator.UNPOOLED_ALLOCATOR.heapBuffer(Prefix.FIXED);
+    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(Prefix.FIXED);
 
     private final ReadStream<Buffer> src;
 
     private final Promise<Buffer> promise;
     private int bodyLen = -1;
 
-    @Getter private boolean streamEnded;
+    @Getter private volatile boolean streamEnded;
 
-    ParserHandler(ReadStream<Buffer> src) {
+    PrefixBuffer(ReadStream<Buffer> src) {
       this.promise = Promise.promise();
       this.src = src;
-      src.endHandler(v -> ParserHandler.this.streamEnded = true);
+      src.endHandler(v -> PrefixBuffer.this.streamEnded = true);
       src.exceptionHandler(promise::tryFail);
     }
 

@@ -158,3 +158,15 @@ message ProxyAuthentication{
   optional bytes nonce = 3;
   optional bytes signature = 4;
 }
+
+message ConnectRequest{
+  optional string host = 1;
+  optional uint32 port = 2;
+  optional Headers headers = 3;
+  optional ProxyAuthentication auth = 4;
+}
+
+message ConnectResult{
+  optional uint32 code = 1;
+  optional string msg = 2;
+}

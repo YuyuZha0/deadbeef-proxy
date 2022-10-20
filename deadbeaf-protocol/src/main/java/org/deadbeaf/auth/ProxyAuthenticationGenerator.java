@@ -17,7 +17,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 @SuppressWarnings("UnstableApiUsage")
-public final class ProxyAuthenticationGenerator implements Supplier<String> {
+public final class ProxyAuthenticationGenerator implements Supplier<HttpProto.ProxyAuthentication> {
 
   private static final int NONCE_LEN = 16;
   private final String secretId;
@@ -41,19 +41,21 @@ public final class ProxyAuthenticationGenerator implements Supplier<String> {
   }
 
   @Override
-  public String get() {
+  public HttpProto.ProxyAuthentication get() {
     byte[] nonce = new byte[NONCE_LEN];
     ThreadLocalRandom.current().nextBytes(nonce);
     long timestamp = System.currentTimeMillis();
     byte[] signature = signature(secretId, timestamp, nonce, sha256);
-    HttpProto.ProxyAuthentication proxyAuthentication =
-        HttpProto.ProxyAuthentication.newBuilder()
-            .setSecretId(secretId)
-            .setTimestamp(timestamp)
-            .setNonce(ByteString.copyFrom(nonce))
-            .setSignature(ByteString.copyFrom(signature))
-            .build();
+    return HttpProto.ProxyAuthentication.newBuilder()
+        .setSecretId(secretId)
+        .setTimestamp(timestamp)
+        .setNonce(ByteString.copyFrom(nonce))
+        .setSignature(ByteString.copyFrom(signature))
+        .build();
+  }
 
+  public String getString() {
+    HttpProto.ProxyAuthentication proxyAuthentication = get();
     StringBuilder builder = new StringBuilder(128);
     try (Writer writer = CharStreams.asWriter(builder)) {
       try (OutputStream outputStream = BaseEncoding.base64Url().encodingStream(writer)) {

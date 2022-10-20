@@ -3,9 +3,8 @@ package org.deadbeaf.server;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
-import io.vertx.core.Future;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
@@ -15,76 +14,94 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeaf.auth.ProxyAuthenticationValidator;
 import org.deadbeaf.protocol.HttpHeaderDecoder;
 import org.deadbeaf.protocol.HttpProto;
 import org.deadbeaf.protocol.Prefix;
-import org.deadbeaf.protocol.ProxyStreamPrefixResolver;
+import org.deadbeaf.protocol.ProxyStreamPrefixVisitor;
 import org.deadbeaf.util.Constants;
-import org.deadbeaf.util.Utils;
+import org.deadbeaf.util.HttpRequestUtils;
 
 import java.io.IOException;
 
 @Slf4j
-public final class ServerHttpHandler implements Handler<HttpServerRequest> {
+public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
   private final HttpClientResponseEncoder encoder = new HttpClientResponseEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
   private final HttpClient httpClient;
-  private final ProxyStreamPrefixResolver<HttpClientRequest> proxyStreamPrefixResolver;
+  private final ProxyStreamPrefixVisitor<HttpClientRequest> proxyStreamPrefixVisitor;
 
-  public ServerHttpHandler(Vertx vertx, HttpClient httpClient) {
+  private final ProxyAuthenticationValidator proxyAuthenticationValidator;
+
+  public Http2HttpHandler(
+      @NonNull Vertx vertx,
+      @NonNull HttpClient httpClient,
+      @NonNull ProxyAuthenticationValidator validator) {
     this.httpClient = httpClient;
-    this.proxyStreamPrefixResolver = new ProxyStreamPrefixResolver<>(vertx);
+    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx);
+    this.proxyAuthenticationValidator = validator;
   }
 
   @Override
   public void handle(HttpServerRequest serverRequest) {
     HttpServerResponse serverResponse = serverRequest.response();
-    Handler<Throwable> errorHandler = Utils.createErrorHandler(serverResponse, log);
-    proxyStreamPrefixResolver
-        .resolvePrefix(
-            serverRequest,
-            prefix -> {
+    if (!proxyAuthenticationValidator.testString(
+        serverRequest.getHeader(Constants.authHeaderName()))) {
+      serverResponse.setStatusCode(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED.code()).end();
+      return;
+    }
+    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse, log);
+    proxyStreamPrefixVisitor
+        .visit(serverRequest)
+        .onFailure(errorHandler)
+        .onSuccess(
+            prefixAndAction -> {
               HttpProto.Request request;
-              try (ByteBufInputStream inputStream = new ByteBufInputStream(prefix.getByteBuf())) {
+              try (ByteBufInputStream inputStream =
+                  new ByteBufInputStream(prefixAndAction.get().getByteBuf())) {
                 request = HttpProto.Request.parseFrom(inputStream);
               } catch (IOException e) {
-                return Future.failedFuture(e);
+                errorHandler.handle(e);
+                return;
               }
               if (log.isDebugEnabled()) {
                 log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), request);
               }
-              Promise<HttpClientRequest> promise = Promise.promise();
               httpClient.request(
                   buildRequestOptions(request),
                   ar -> {
                     if (ar.succeeded()) {
                       HttpClientRequest clientRequest = ar.result();
                       clientRequest.exceptionHandler(errorHandler);
-                      promise.tryComplete(clientRequest);
+                      prefixAndAction
+                          .apply(clientRequest)
+                          .onSuccess(
+                              v -> {
+                                clientRequest.end();
+                                clientRequest
+                                    .response()
+                                    .onSuccess(
+                                        clientResponse ->
+                                            writeResponse(
+                                                serverResponse, clientResponse, errorHandler))
+                                    .onFailure(errorHandler);
+                              })
+                          .onFailure(errorHandler);
                     } else {
-                      promise.tryFail(ar.cause());
+                      errorHandler.handle(ar.cause());
                     }
                   });
-              return promise.future();
-            },
-            clientRequest -> {
-              clientRequest.end();
-              clientRequest
-                  .response()
-                  .onSuccess(
-                      clientResponse -> writeResponse(serverResponse, clientResponse, errorHandler))
-                  .onFailure(errorHandler);
-            })
-        .onFailure(errorHandler);
+            });
   }
 
   private void writeResponse(
       HttpServerResponse serverResponse,
       HttpClientResponse clientResponse,
       Handler<Throwable> errorHandler) {
-    long contentLength = Utils.contentLength(clientResponse.headers());
+    long contentLength = HttpRequestUtils.contentLength(clientResponse.headers());
     HttpProto.Response proto = encoder.apply(clientResponse);
     if (log.isDebugEnabled()) {
       log.debug("{} :{}{}", Constants.leftArrow(), Constants.lineSeparator(), proto);

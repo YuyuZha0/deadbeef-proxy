@@ -10,6 +10,6 @@ public class ProxyAuthenticationGeneratorTest {
     ProxyAuthenticationGenerator generator =
         new ProxyAuthenticationGenerator(RandomStringUtils.random(16), "bbb");
 
-    System.out.println(generator.get().length());
+    System.out.println(generator.get());
   }
 }

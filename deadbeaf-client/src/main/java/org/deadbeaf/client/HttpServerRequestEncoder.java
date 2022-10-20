@@ -54,6 +54,7 @@ public final class HttpServerRequestEncoder
     }
     String path = request.path();
     if (StringUtils.isNotEmpty(path)
+        // Workaround for vert.x currently not support proxy protocol
         && StringUtils.isNotEmpty(path = StringUtils.removeStart(path, hostString))) {
       if (!path.startsWith("/")) {
         builder.append("/");

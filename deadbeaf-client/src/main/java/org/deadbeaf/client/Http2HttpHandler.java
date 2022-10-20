@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -23,31 +22,31 @@ import org.deadbeaf.auth.ProxyAuthenticationGenerator;
 import org.deadbeaf.protocol.HttpHeaderDecoder;
 import org.deadbeaf.protocol.HttpProto;
 import org.deadbeaf.protocol.Prefix;
-import org.deadbeaf.protocol.ProxyStreamPrefixResolver;
+import org.deadbeaf.protocol.ProxyStreamPrefixVisitor;
 import org.deadbeaf.route.AddressPicker;
 import org.deadbeaf.util.Constants;
-import org.deadbeaf.util.Utils;
+import org.deadbeaf.util.HttpRequestUtils;
 
 import java.io.IOException;
 
 @Slf4j
-public final class ClientHttpHandler implements Handler<HttpServerRequest> {
+public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
-  private final HttpServerRequestEncoder encoder = new HttpServerRequestEncoder();
+  private final HttpServerRequestEncoder httpServerRequestEncoder = new HttpServerRequestEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
 
-  private final ProxyStreamPrefixResolver<HttpServerResponse> proxyStreamPrefixResolver;
+  private final ProxyStreamPrefixVisitor<HttpServerResponse> proxyStreamPrefixVisitor;
   private final HttpClient httpClient;
   private final AddressPicker addressPicker;
 
   private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
 
-  public ClientHttpHandler(
+  public Http2HttpHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
       @NonNull AddressPicker addressPicker,
       @NonNull ProxyAuthenticationGenerator generator) {
-    this.proxyStreamPrefixResolver = new ProxyStreamPrefixResolver<>(vertx);
+    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx);
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
     this.proxyAuthenticationGenerator = generator;
@@ -80,8 +79,8 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
     if (!should100Continue(serverRequest)) {
       return;
     }
-    long contentLength = Utils.contentLength(serverRequest.headers());
-    HttpProto.Request proto = encoder.apply(serverRequest);
+    long contentLength = HttpRequestUtils.contentLength(serverRequest.headers());
+    HttpProto.Request proto = httpServerRequestEncoder.apply(serverRequest);
     if (log.isDebugEnabled()) {
       log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), proto);
     }
@@ -94,7 +93,7 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
 
     serverRequest.pause();
     HttpServerResponse serverResponse = serverRequest.response();
-    Handler<Throwable> errorHandler = Utils.createErrorHandler(serverResponse, log);
+    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse, log);
     httpClient
         .request(requestOptions)
         .onSuccess(
@@ -153,39 +152,36 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
       serverResponse.end();
       return;
     }
-    proxyStreamPrefixResolver
-        .resolvePrefix(
-            clientResponse,
-            prefix -> {
+    proxyStreamPrefixVisitor
+        .visit(clientResponse)
+        .onFailure(errorHandler)
+        .onSuccess(
+            prefixAndAction -> {
               HttpProto.Response response;
-              try (ByteBufInputStream inputStream = new ByteBufInputStream(prefix.getByteBuf())) {
+              try (ByteBufInputStream inputStream =
+                  new ByteBufInputStream(prefixAndAction.get().getByteBuf())) {
                 response = HttpProto.Response.parseFrom(inputStream);
               } catch (IOException e) {
-                return Future.failedFuture(e);
+                errorHandler.handle(e);
+                return;
               }
               if (log.isDebugEnabled()) {
                 log.debug("{} :{}{}", Constants.leftArrow(), Constants.lineSeparator(), response);
               }
-              fillHeaders(serverResponse, response);
-              return Future.succeededFuture(serverResponse);
-            })
-        .onComplete(
-            result -> {
-              if (log.isDebugEnabled()) {
-                log.debug(
-                    "Pipe stream ended, contentLength={}, bytesWritten={}",
-                    Utils.contentLength(clientResponse.headers()),
-                    serverResponse.bytesWritten());
-              }
-              if (result.succeeded()) {
-                serverResponse.end();
-              } else {
-                errorHandler.handle(result.cause());
-              }
+              setupResponse(serverResponse, response);
+              prefixAndAction.accept(
+                  serverResponse,
+                  ar -> {
+                    if (ar.succeeded()) {
+                      serverResponse.end();
+                    } else {
+                      errorHandler.handle(ar.cause());
+                    }
+                  });
             });
   }
 
-  private void fillHeaders(HttpServerResponse response, HttpProto.Response proto) {
+  private void setupResponse(HttpServerResponse response, HttpProto.Response proto) {
     if (proto.hasHeaders()) {
       headerDecoder.visit(proto.getHeaders(), response::putHeader);
     }
@@ -199,7 +195,6 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
 
   private void putHeaders(
       HttpProto.Request request, long contentLength, RequestOptions requestOptions) {
-    requestOptions.putHeader(Constants.authHeaderName(), proxyAuthenticationGenerator.get());
     requestOptions.putHeader(
         HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_OCTET_STREAM);
     if (contentLength >= 0) {
@@ -207,5 +202,6 @@ public final class ClientHttpHandler implements Handler<HttpServerRequest> {
           HttpHeaderNames.CONTENT_LENGTH,
           Long.toString(Prefix.serializeToBufferSize(request) + contentLength));
     }
+    requestOptions.putHeader(Constants.authHeaderName(), proxyAuthenticationGenerator.getString());
   }
 }
