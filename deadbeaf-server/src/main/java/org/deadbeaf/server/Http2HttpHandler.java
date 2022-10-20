@@ -120,7 +120,8 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
             v -> {
               if (log.isDebugEnabled()) {
                 log.debug(
-                    "Pipe stream ended, contentLength={}, prefixLength={}, bytesWritten={}",
+                    "Server response ended={}, contentLength={}, prefixLength={}, bytesWritten={}",
+                    serverResponse.ended(),
                     contentLength,
                     prefixData.length(),
                     serverResponse.bytesWritten());

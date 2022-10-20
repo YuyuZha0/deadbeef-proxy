@@ -128,7 +128,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
   private static final class PrefixBuffer implements Handler<Buffer> {
 
     private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
-    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(Prefix.FIXED);
+    private final ByteBuf tempBuf = VertxByteBufAllocator.UNPOOLED_ALLOCATOR.heapBuffer();
 
     private final ReadStream<Buffer> src;
 
@@ -140,7 +140,13 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     PrefixBuffer(ReadStream<Buffer> src) {
       this.promise = Promise.promise();
       this.src = src;
-      src.endHandler(v -> PrefixBuffer.this.streamEnded = true);
+      src.endHandler(
+          v -> {
+            if (log.isDebugEnabled()) {
+              log.debug("[ReadStream: `{}`] ended!", src);
+            }
+            PrefixBuffer.this.streamEnded = true;
+          });
       src.exceptionHandler(promise::tryFail);
     }
 
@@ -175,9 +181,9 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       promise
           .future()
           .onComplete(
-              asyncResult -> {
+              result -> {
                 clearHandlers(src);
-                bufferHandler.handle(asyncResult);
+                bufferHandler.handle(result);
               });
     }
 
@@ -194,7 +200,8 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     public void handle(Buffer event) {
       if (log.isDebugEnabled()) {
         log.info(
-            "Incoming bytes:{}{}",
+            "Incoming bytes:[length={}]{}{}",
+            event.length(),
             Constants.lineSeparator(),
             ByteBufUtil.prettyHexDump(event.getByteBuf()));
       }
