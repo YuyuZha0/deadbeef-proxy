@@ -27,6 +27,7 @@ import org.deadbeaf.util.HttpRequestUtils;
 import org.deadbeaf.util.Utils;
 
 import java.io.IOException;
+import java.util.NoSuchElementException;
 
 @Slf4j
 public final class Http2SocketHandler implements Handler<HttpServerRequest> {
@@ -91,20 +92,27 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
       netSocket.close();
       return;
     }
-    serverRequest.toNetSocket(
-        ar -> {
-          if (ar.succeeded()) {
-            NetSocket clientSocket = ar.result();
-            Utils.exchangeCloseHook(clientSocket, netSocket);
-            prefixAndAction.apply(clientSocket);
-            Pipe<Buffer> pipe =
-                new PipeImpl<>(clientSocket).endOnSuccess(false).endOnFailure(false);
-            pipe.to(netSocket);
-          } else {
-            netSocket.close();
-            errorHandler.handle(ar.cause());
-          }
-        });
+    try {
+      serverRequest.toNetSocket(
+          ar -> {
+            if (ar.succeeded()) {
+              NetSocket clientSocket = ar.result();
+              Utils.exchangeCloseHook(clientSocket, netSocket);
+              prefixAndAction.apply(clientSocket);
+              Pipe<Buffer> pipe =
+                  new PipeImpl<>(clientSocket).endOnSuccess(false).endOnFailure(false);
+              pipe.to(netSocket);
+            } else {
+              netSocket.close();
+              errorHandler.handle(ar.cause());
+            }
+          });
+    } catch (Exception cause) {
+      if (cause instanceof NoSuchElementException) {
+        return;
+      }
+      errorHandler.handle(cause);
+    }
   }
 
   @Override

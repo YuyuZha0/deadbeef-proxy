@@ -17,8 +17,6 @@ import org.apache.commons.cli.ParseException;
 import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.Utils;
 
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 @Slf4j
@@ -53,7 +51,6 @@ public final class Bootstrap {
   public static <A extends ProxyVerticle> void bootstrap(
       @NonNull Vertx vertx, @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
     log.info("Native transport enable status: {}", vertx.isNativeTransportEnabled());
-    List<String> closeHooks = new CopyOnWriteArrayList<>();
     vertx.deployVerticle(
         () -> factory.apply(config),
         new DeploymentOptions(),
@@ -61,21 +58,10 @@ public final class Bootstrap {
           String deployID = result.result();
           if (result.succeeded()) {
             log.info("Deploy verticle successfully: {}", deployID);
-            closeHooks.add(result.result());
           } else {
             log.error("Deploy verticle with unexpected exception: ", result.cause());
           }
         });
-    Runtime.getRuntime()
-        .addShutdownHook(
-            new Thread(
-                () -> {
-                  if (!closeHooks.isEmpty()) {
-                    for (String deployId : closeHooks) {
-                      vertx.undeploy(deployId);
-                    }
-                  }
-                }));
   }
 
   public static <A extends ProxyVerticle> void bootstrap(
