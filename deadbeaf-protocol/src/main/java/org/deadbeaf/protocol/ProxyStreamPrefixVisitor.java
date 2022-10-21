@@ -80,8 +80,10 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
                             whenWritingFinished.handle(Future.failedFuture(cause));
                           }
                         });
+            // TODO some case PrefixBuffer.release() may not called!
             handler.handle(Future.succeededFuture(new PrefixAndAction<>(prefix, action)));
           } else {
+            prefixBuffer.release();
             handler.handle(Future.failedFuture(ar.cause()));
           }
         });
