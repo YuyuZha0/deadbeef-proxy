@@ -5,12 +5,9 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
-import io.vertx.core.streams.Pipe;
-import io.vertx.core.streams.impl.PipeImpl;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
@@ -106,15 +103,12 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
               downSocket.write(
                   Prefix.serializeToBuffer(ok),
                   ar -> {
-                    if (ar.succeeded()) {
-                      Pipe<Buffer> pipe =
-                          new PipeImpl<>(upperSocket).endOnSuccess(false).endOnFailure(false);
-                      pipe.to(downSocket);
-                    } else {
+                    if (ar.failed()) {
                       downSocket.close();
                       log.error("Write response to socket client with exception: ", ar.cause());
                     }
                   });
+              Utils.newPipe(upperSocket, false, false).to(downSocket);
             });
   }
 

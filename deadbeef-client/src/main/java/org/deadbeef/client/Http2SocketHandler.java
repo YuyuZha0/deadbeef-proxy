@@ -5,14 +5,11 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.net.SocketAddress;
-import io.vertx.core.streams.Pipe;
-import io.vertx.core.streams.impl.PipeImpl;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -99,9 +96,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
               NetSocket clientSocket = ar.result();
               Utils.exchangeCloseHook(clientSocket, netSocket);
               prefixAndAction.apply(clientSocket);
-              Pipe<Buffer> pipe =
-                  new PipeImpl<>(clientSocket).endOnSuccess(false).endOnFailure(false);
-              pipe.to(netSocket);
+              Utils.newPipe(clientSocket, false, false).to(netSocket);
             } else {
               netSocket.close();
               errorHandler.handle(ar.cause());

@@ -22,13 +22,13 @@ public final class Utils {
   public static void exchangeCloseHook(@NonNull NetSocket alice, @NonNull NetSocket bob) {
     Preconditions.checkArgument(alice != bob);
     alice.closeHandler(
-        Utils.atMostOnce(
+        atMostOnce(
             v -> {
               bob.closeHandler(null);
               bob.close();
             }));
     bob.closeHandler(
-        Utils.atMostOnce(
+        atMostOnce(
             v -> {
               alice.closeHandler(null);
               alice.close();
