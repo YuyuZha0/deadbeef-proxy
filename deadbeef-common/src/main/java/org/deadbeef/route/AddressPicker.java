@@ -24,4 +24,7 @@ public interface AddressPicker extends Function<HttpServerRequest, SocketAddress
   static AddressPicker ofHostHeader(int defaultPort) {
     return new HostHeaderAddressPicker(defaultPort);
   }
+
+  @Override
+  SocketAddress apply(HttpServerRequest serverRequest);
 }
