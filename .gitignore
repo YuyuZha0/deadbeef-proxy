@@ -4,5 +4,5 @@ target
 .DS_Store
 *.iml
 */dependency-reduced-pom.xml
-client_config.yaml
-server_config.yaml
+client-config.yaml
+server-config.yaml
