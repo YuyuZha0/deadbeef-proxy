@@ -81,14 +81,14 @@ public class ProxyStreamPrefixVisitorTest {
         .onComplete(
             ar -> {
               if (ar.succeeded()) {
-                sendReq(httpClient, testContext, async);
+                sendReq(vertx, httpClient, testContext, async);
               } else {
                 testContext.fail(ar.cause());
               }
             });
   }
 
-  private void sendReq(HttpClient httpClient, TestContext testContext, Async async) {
+  private void sendReq(Vertx vertx, HttpClient httpClient, TestContext testContext, Async async) {
     httpClient
         .request(HttpMethod.POST, port, "127.0.0.1", "")
         .onSuccess(
@@ -102,35 +102,29 @@ public class ProxyStreamPrefixVisitorTest {
                   HttpHeaderNames.CONTENT_LENGTH,
                   Integer.toString(prefix.length() + randomData.length()));
               request.write(prefix);
+              vertx.setTimer(30, id -> request.end(randomData));
+
               request
-                  .end(randomData)
+                  .response()
                   .onSuccess(
-                      v ->
-                          request
-                              .response()
-                              .onSuccess(
-                                  response -> {
-                                    response.handler(
-                                        buffer -> {
-                                          System.out.println(
-                                              "Receive buffer len: " + buffer.length());
-                                          System.out.println(response.headers());
-                                        });
-                                    response
-                                        .body()
-                                        .onSuccess(
-                                            buffer -> {
-                                              testContext.assertTrue(
-                                                  Arrays.equals(
-                                                      randomData.getBytes(), buffer.getBytes()),
-                                                  Strings.lenientFormat(
-                                                      "%s, %s",
-                                                      randomData.length(), buffer.length()));
-                                              async.countDown();
-                                            })
-                                        .onFailure(testContext::fail);
-                                  })
-                              .onFailure(testContext::fail))
+                      response -> {
+                        response.handler(
+                            buffer -> {
+                              System.out.println("Receive buffer len: " + buffer.length());
+                              System.out.println(response.headers());
+                            });
+                        response
+                            .body()
+                            .onSuccess(
+                                buffer -> {
+                                  testContext.assertTrue(
+                                      Arrays.equals(randomData.getBytes(), buffer.getBytes()),
+                                      Strings.lenientFormat(
+                                          "%s, %s", randomData.length(), buffer.length()));
+                                  async.countDown();
+                                })
+                            .onFailure(testContext::fail);
+                      })
                   .onFailure(testContext::fail);
             })
         .onFailure(testContext::fail);

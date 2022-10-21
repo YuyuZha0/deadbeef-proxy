@@ -76,7 +76,7 @@ public final class Bootstrap {
     return config;
   }
 
-  public static <A extends ProxyVerticle> void bootstrap(
+  public static <A extends ProxyVerticle> void deploy(
       @NonNull Vertx vertx, @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
     log.info("Native transport enable status: {}", vertx.isNativeTransportEnabled());
     vertx.deployVerticle(
@@ -110,7 +110,7 @@ public final class Bootstrap {
   public static <A extends ProxyVerticle> void bootstrap(
       Function<JsonObject, A> factory, JsonObject config) {
     Vertx vertx = vertx(config);
-    bootstrap(vertx, factory, config);
+    deploy(vertx, factory, config);
   }
 
   public static <A extends ProxyVerticle> void bootstrap(

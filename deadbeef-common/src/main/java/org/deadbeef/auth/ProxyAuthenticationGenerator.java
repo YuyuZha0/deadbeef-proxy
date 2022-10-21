@@ -13,7 +13,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ThreadLocalRandom;
+import java.security.SecureRandom;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 @SuppressWarnings("UnstableApiUsage")
@@ -23,11 +24,19 @@ public final class ProxyAuthenticationGenerator implements Supplier<HttpProto.Pr
   private final String secretId;
   private final HashFunction sha256;
 
-  public ProxyAuthenticationGenerator(String secretId, String secretKey) {
+  private final LongSupplier clock;
+
+  public ProxyAuthenticationGenerator(String secretId, String secretKey, LongSupplier clock) {
     Preconditions.checkArgument(StringUtils.isNotEmpty(secretId), "empty secretId");
     Preconditions.checkArgument(StringUtils.isNotEmpty(secretKey), "empty secretKey");
+    Preconditions.checkNotNull(clock, "null clock");
     this.secretId = secretId;
     this.sha256 = Hashing.hmacSha256(secretKey.getBytes(StandardCharsets.UTF_8));
+    this.clock = clock;
+  }
+
+  public ProxyAuthenticationGenerator(String secretId, String secretKey) {
+    this(secretId, secretKey, System::currentTimeMillis);
   }
 
   static byte[] signature(String secretId, long timestamp, byte[] nonce, HashFunction function) {
@@ -43,8 +52,8 @@ public final class ProxyAuthenticationGenerator implements Supplier<HttpProto.Pr
   @Override
   public HttpProto.ProxyAuthentication get() {
     byte[] nonce = new byte[NONCE_LEN];
-    ThreadLocalRandom.current().nextBytes(nonce);
-    long timestamp = System.currentTimeMillis();
+    Holder.RANDOM.nextBytes(nonce);
+    long timestamp = clock.getAsLong();
     byte[] signature = signature(secretId, timestamp, nonce, sha256);
     return HttpProto.ProxyAuthentication.newBuilder()
         .setSecretId(secretId)
@@ -66,5 +75,9 @@ public final class ProxyAuthenticationGenerator implements Supplier<HttpProto.Pr
     }
 
     return builder.toString();
+  }
+
+  private static final class Holder {
+    private static final SecureRandom RANDOM = new SecureRandom();
   }
 }

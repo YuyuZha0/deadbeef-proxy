@@ -14,7 +14,7 @@ public final class App {
     // args = new String[] {"-c", "/Users/zhaoyuyu/IdeaProjects/deadbeaf-proxy/server_config.yaml"};
     JsonObject config = Bootstrap.loadCommandLineConfig(args);
     Vertx vertx = Bootstrap.vertx(config);
-    Bootstrap.bootstrap(vertx, HttpsVerticle::new, config);
-    Bootstrap.bootstrap(vertx, HttpVerticle::new, config);
+    Bootstrap.deploy(vertx, HttpsVerticle::new, config);
+    Bootstrap.deploy(vertx, HttpVerticle::new, config);
   }
 }
