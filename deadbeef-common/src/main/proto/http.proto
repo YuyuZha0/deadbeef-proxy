@@ -1,0 +1,172 @@
+syntax = "proto2";
+
+package org.deadbeef;
+
+option java_package = "org.deadbeef.protocol";
+option java_outer_classname = "HttpProto";
+
+
+//  https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers
+message Headers{
+
+  map<string, string> undeclared_pairs = 1;
+  optional string accept = 2;
+  optional string accept_charset = 3;
+  optional string accept_encoding = 4;
+  optional string accept_language = 5;
+  optional string accept_ranges = 6;
+  optional string accept_patch = 7;
+  optional string access_control_allow_credentials = 8;
+  optional string access_control_allow_headers = 9;
+  optional string access_control_allow_methods = 10;
+  optional string access_control_allow_origin = 11;
+  optional string access_control_allow_private_network = 12;
+  optional string access_control_expose_headers = 13;
+  optional string access_control_max_age = 14;
+  optional string access_control_request_headers = 15;
+  optional string access_control_request_method = 16;
+  optional string access_control_request_private_network = 17;
+  optional string age = 18;
+  optional string allow = 19;
+  optional string authorization = 20;
+  optional string cache_control = 21;
+  optional string connection = 22;
+  optional string content_base = 23;
+  optional string content_encoding = 24;
+  optional string content_language = 25;
+  optional string content_length = 26;
+  optional string content_location = 27;
+  optional string content_transfer_encoding = 28;
+  optional string content_disposition = 29;
+  optional string content_md5 = 30;
+  optional string content_range = 31;
+  optional string content_security_policy = 32;
+  optional string content_type = 33;
+  optional string cookie = 34;
+  optional string date = 35;
+  optional string dnt = 36;
+  optional string etag = 37;
+  optional string expect = 38;
+  optional string expires = 39;
+  optional string from = 40;
+  optional string host = 41;
+  optional string if_match = 42;
+  optional string if_modified_since = 43;
+  optional string if_none_match = 44;
+  optional string if_range = 45;
+  optional string if_unmodified_since = 46;
+  optional string keep_alive = 47;
+  optional string last_modified = 48;
+  optional string location = 49;
+  optional string max_forwards = 50;
+  optional string origin = 51;
+  optional string pragma = 52;
+  optional string proxy_authenticate = 53;
+  optional string proxy_authorization = 54;
+  optional string proxy_connection = 55;
+  optional string range = 56;
+  optional string referer = 57;
+  optional string retry_after = 58;
+  optional string sec_websocket_key1 = 59;
+  optional string sec_websocket_key2 = 60;
+  optional string sec_websocket_location = 61;
+  optional string sec_websocket_origin = 62;
+  optional string sec_websocket_protocol = 63;
+  optional string sec_websocket_version = 64;
+  optional string sec_websocket_key = 65;
+  optional string sec_websocket_accept = 66;
+  optional string sec_websocket_extensions = 67;
+  optional string server = 68;
+  optional string set_cookie = 69;
+  optional string set_cookie2 = 70;
+  optional string te = 71;
+  optional string trailer = 72;
+  optional string transfer_encoding = 73;
+  optional string upgrade = 74;
+  optional string upgrade_insecure_requests = 75;
+  optional string user_agent = 76;
+  optional string vary = 77;
+  optional string via = 78;
+  optional string warning = 79;
+  optional string websocket_location = 80;
+  optional string websocket_origin = 81;
+  optional string websocket_protocol = 82;
+  optional string www_authenticate = 83;
+  optional string x_frame_options = 84;
+  optional string x_requested_with = 85;
+  optional string x_forwarded_for = 86;
+}
+
+
+enum Method{
+  OPTIONS = 1;
+  GET = 2;
+  HEAD = 3;
+  POST = 4;
+  PUT = 5;
+  DELETE = 6;
+  TRACE = 7;
+  CONNECT = 8;
+  PATCH = 9;
+  PROPFIND = 10;
+  PROPPATCH = 11;
+  MKCOL = 12;
+  COPY = 13;
+  MOVE = 14;
+  LOCK = 15;
+  UNLOCK = 16;
+  MKCALENDAR = 17;
+  VERSION_CONTROL = 18;
+  REPORT = 19;
+  CHECKIN = 20;
+  CHECKOUT = 21;
+  UNCHECKOUT = 22;
+  MKWORKSPACE = 23;
+  UPDATE = 24;
+  LABEL = 25;
+  MERGE = 26;
+  BASELINE_CONTROL = 27;
+  MKACTIVITY = 28;
+  ORDERPATCH = 29;
+  ACL = 30;
+  SEARCH = 31;
+}
+
+enum Version{
+  HTTP_1_0 = 1;
+  HTTP_1_1 = 2;
+  HTTP_2 = 3;
+}
+
+message Request{
+  optional Version version = 1;
+  optional Method method = 2;
+  optional string scheme = 3;
+  optional string absolute_uri = 4;
+  optional Headers headers = 5;
+}
+
+message Response{
+  optional uint32 status_code = 1;
+  optional string status_message = 2;
+  optional Headers headers = 3;
+}
+
+message ProxyAuthentication{
+  optional string secret_id = 1;
+  optional uint64 timestamp = 2;
+  optional bytes nonce = 3;
+  optional bytes signature = 4;
+}
+
+message ConnectRequest{
+  optional string host = 1;
+  optional uint32 port = 2;
+  optional Headers headers = 3;
+  optional ProxyAuthentication auth = 4;
+}
+
+message ConnectResult{
+  optional uint32 code = 1;
+  optional string msg = 2;
+}

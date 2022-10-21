@@ -2,17 +2,17 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.deadbeaf</groupId>
-    <artifactId>deadbeaf-proxy</artifactId>
+    <groupId>org.deadbeef</groupId>
+    <artifactId>deadbeef-proxy</artifactId>
     <version>${revision}</version>
     <modules>
-        <module>deadbeaf-client</module>
-        <module>deadbeaf-server</module>
-        <module>deadbeaf-protocol</module>
+        <module>deadbeef-client</module>
+        <module>deadbeef-server</module>
+        <module>deadbeef-common</module>
     </modules>
     <packaging>pom</packaging>
 
-    <name>deadbeaf-proxy</name>
+    <name>deadbeef-proxy</name>
     <url>http://maven.apache.org</url>
 
     <properties>
