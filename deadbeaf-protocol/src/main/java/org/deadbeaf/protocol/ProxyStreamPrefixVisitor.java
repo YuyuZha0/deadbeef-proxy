@@ -17,11 +17,11 @@ import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.WriteStream;
-import io.vertx.core.streams.impl.PipeImpl;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeaf.util.Constants;
+import org.deadbeaf.util.Utils;
 
 import java.util.function.BiConsumer;
 
@@ -72,7 +72,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
             ContextInternal context = vertx.getOrCreateContext();
             BiConsumer<W, Handler<AsyncResult<Void>>> action =
                 (writeStream, whenWritingFinished) ->
-                    context.runOnContext(
+                    context.execute(
                         v -> {
                           try {
                             copy(src, writeStream, prefixBuffer, whenWritingFinished);
@@ -94,13 +94,13 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       Handler<AsyncResult<Void>> handler) {
 
     Buffer remaining = prefixBuffer.readRemaining();
-    prefixBuffer.clear();
+    prefixBuffer.release();
     if (remaining == null && prefixBuffer.isStreamEnded()) {
       handler.handle(Future.succeededFuture());
       return;
     }
     if (remaining == null) {
-      Pipe<Buffer> pipe = newPipe(src);
+      Pipe<Buffer> pipe = Utils.newPipe(src, false, false);
       pipe.to(dst, handler);
       src.resume();
       return;
@@ -116,19 +116,15 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
             handler.handle(ar);
           }
         });
-    Pipe<Buffer> pipe = newPipe(src);
+    Pipe<Buffer> pipe = Utils.newPipe(src, false, false);
     pipe.to(dst, handler);
     src.resume();
-  }
-
-  private Pipe<Buffer> newPipe(ReadStream<Buffer> src) {
-    return new PipeImpl<>(src).endOnSuccess(false).endOnFailure(false);
   }
 
   private static final class PrefixBuffer implements Handler<Buffer> {
 
     private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
-    private final ByteBuf tempBuf = VertxByteBufAllocator.UNPOOLED_ALLOCATOR.heapBuffer();
+    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(0xff);
 
     private final ReadStream<Buffer> src;
 
@@ -174,21 +170,14 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       }
     }
 
-    void parsePrefix(@NonNull Handler<AsyncResult<Buffer>> bufferHandler) {
+    void parsePrefix(Handler<AsyncResult<Buffer>> bufferHandler) {
       src.pause();
       src.fetch(Prefix.FIXED);
       src.handler(this);
-      promise
-          .future()
-          .onComplete(
-              result -> {
-                clearHandlers(src);
-                bufferHandler.handle(result);
-              });
+      promise.future().onComplete(bufferHandler);
     }
 
     private void expectBody() {
-      src.pause(); // pause should happens-before complete promise!!!
       ByteBuf byteBuf = tempBuf.readBytes(bodyLen);
       promise.tryComplete(Buffer.buffer(byteBuf));
       if (log.isDebugEnabled()) {
@@ -235,11 +224,12 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       return null;
     }
 
-    void clear() {
+    void release() {
       if (log.isDebugEnabled()) {
         log.debug("Release temporary ByteBuf: {}", tempBuf);
       }
-      tempBuf.clear();
+      clearHandlers(src);
+      // tempBuf.clear();
       ReferenceCountUtil.release(tempBuf);
     }
   }

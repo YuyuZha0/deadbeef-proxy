@@ -3,8 +3,12 @@ package org.deadbeaf.util;
 import com.google.common.base.Preconditions;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.vertx.core.Handler;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetSocket;
+import io.vertx.core.streams.Pipe;
+import io.vertx.core.streams.ReadStream;
+import io.vertx.core.streams.impl.PipeImpl;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.yaml.snakeyaml.Yaml;
@@ -67,5 +71,10 @@ public final class Utils {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public static Pipe<Buffer> newPipe(
+      ReadStream<Buffer> src, boolean endOnSuccess, boolean endOnFail) {
+    return new PipeImpl<>(src).endOnSuccess(endOnSuccess).endOnFailure(endOnFail);
   }
 }

@@ -48,7 +48,15 @@ public final class PrefixAndAction<W extends WriteStream<Buffer>>
   @Override
   public void accept(@NonNull W writeStream, Handler<AsyncResult<Void>> handler) {
     if (actionExecuted.compareAndSet(false, true)) {
-      action.accept(writeStream, handler != null ? handler : EMPTY_HANDLER);
+      try {
+        action.accept(writeStream, handler != null ? handler : EMPTY_HANDLER);
+      } catch (Throwable cause) {
+        if (handler != null) {
+          handler.handle(Future.failedFuture(cause));
+        } else {
+          throw cause;
+        }
+      }
     } else {
       if (handler != null) {
         handler.handle(Future.failedFuture(ERROR_MSG));

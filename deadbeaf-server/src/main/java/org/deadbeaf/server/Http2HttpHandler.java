@@ -23,6 +23,7 @@ import org.deadbeaf.protocol.Prefix;
 import org.deadbeaf.protocol.ProxyStreamPrefixVisitor;
 import org.deadbeaf.util.Constants;
 import org.deadbeaf.util.HttpRequestUtils;
+import org.deadbeaf.util.Utils;
 
 import java.io.IOException;
 
@@ -76,20 +77,22 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
                     if (ar.succeeded()) {
                       HttpClientRequest clientRequest = ar.result();
                       clientRequest.exceptionHandler(errorHandler);
-                      prefixAndAction
-                          .apply(clientRequest)
-                          .onSuccess(
-                              v -> {
-                                clientRequest.end();
-                                clientRequest
-                                    .response()
-                                    .onSuccess(
-                                        clientResponse ->
-                                            writeResponse(
-                                                serverResponse, clientResponse, errorHandler))
-                                    .onFailure(errorHandler);
-                              })
-                          .onFailure(errorHandler);
+                      prefixAndAction.accept(
+                          clientRequest,
+                          ar1 -> {
+                            clientRequest.end();
+                            if (ar1.succeeded()) {
+                              clientRequest
+                                  .response()
+                                  .onSuccess(
+                                      clientResponse ->
+                                          writeResponse(
+                                              serverResponse, clientResponse, errorHandler))
+                                  .onFailure(errorHandler);
+                            } else {
+                              errorHandler.handle(ar1.cause());
+                            }
+                          });
                     } else {
                       errorHandler.handle(ar.cause());
                     }
@@ -114,8 +117,8 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       return;
     }
     serverResponse.write(prefixData).onFailure(errorHandler);
-    clientResponse
-        .pipeTo(serverResponse)
+    Utils.newPipe(clientResponse, false, false)
+        .to(serverResponse)
         .onSuccess(
             v -> {
               if (log.isDebugEnabled()) {
@@ -126,6 +129,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
                     prefixData.length(),
                     serverResponse.bytesWritten());
               }
+              serverResponse.end();
             })
         .onFailure(errorHandler);
   }
