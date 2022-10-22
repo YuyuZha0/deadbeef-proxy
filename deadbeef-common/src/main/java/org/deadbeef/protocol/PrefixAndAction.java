@@ -19,7 +19,12 @@ public final class PrefixAndAction<W extends WriteStream<Buffer>>
         BiConsumer<W, Handler<AsyncResult<Void>>> {
 
   private static final String ERROR_MSG = "Action can not be called multiple times!";
-  private static final Handler<AsyncResult<Void>> EMPTY_HANDLER = result -> {};
+  private static final Handler<AsyncResult<Void>> EMPTY_HANDLER =
+      result -> {
+        if (result.failed()) {
+          result.cause().printStackTrace();
+        }
+      };
 
   private final AtomicBoolean actionExecuted = new AtomicBoolean(false);
   private final Buffer prefix;
