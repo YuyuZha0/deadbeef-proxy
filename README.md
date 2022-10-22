@@ -199,7 +199,9 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]
 ### Remote
 
 Start a deamon process on your remote machine to handle requests from you local proxy server.
+
 *Note: DEADBEEF-SERVER handles HTTP/HTTPS on different ports, configure you firewall properly*
+
 You may start with the following command:
 
 ```bash
