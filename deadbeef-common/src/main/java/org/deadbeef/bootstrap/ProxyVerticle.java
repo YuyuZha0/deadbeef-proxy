@@ -1,11 +1,11 @@
 package org.deadbeef.bootstrap;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.impl.ContextInternal;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.TCPSSLOptions;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -17,24 +17,15 @@ import java.util.List;
 import java.util.function.Supplier;
 
 @Slf4j
-public abstract class ProxyVerticle extends AbstractVerticle {
+public abstract class ProxyVerticle<C extends ProxyConfig> extends AbstractVerticle {
 
   @Getter(AccessLevel.PROTECTED)
-  private final JsonObject config;
+  private final C config;
 
   private final List<Supplier<Future<Void>>> closeHooks = new ArrayList<>();
 
-  protected ProxyVerticle(@NonNull JsonObject config) {
+  protected ProxyVerticle(@NonNull C config) {
     this.config = config;
-  }
-
-  protected <T extends TCPSSLOptions> T enableTcpOptimizationWhenAvailable(T options) {
-    if (vertx.isNativeTransportEnabled()) {
-      options.setTcpFastOpen(true);
-      options.setTcpNoDelay(true);
-      options.setTcpQuickAck(true);
-    }
-    return options;
   }
 
   protected void registerCloseHook(Supplier<Future<Void>> action) {
@@ -42,6 +33,19 @@ public abstract class ProxyVerticle extends AbstractVerticle {
       ContextInternal context = (ContextInternal) super.context;
       context.execute(action, closeHooks::add);
     }
+  }
+
+  protected <T extends TCPSSLOptions> T getOptionsOrDefault(
+      T options, @NonNull Supplier<? extends T> defaultSuppler) {
+    if (options != null) {
+      return options;
+    }
+    T defaultValue = defaultSuppler.get();
+    Preconditions.checkNotNull(defaultValue, "default supplier can't return null!");
+    if (getVertx().isNativeTransportEnabled()) {
+      defaultValue.setTcpNoDelay(true).setTcpQuickAck(true).setTcpFastOpen(true);
+    }
+    return defaultValue;
   }
 
   @Override

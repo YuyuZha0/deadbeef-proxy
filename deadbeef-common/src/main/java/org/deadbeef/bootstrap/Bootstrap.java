@@ -1,5 +1,6 @@
 package org.deadbeef.bootstrap;
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.google.common.base.Preconditions;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Slf4JLoggerFactory;
@@ -7,8 +8,6 @@ import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.dns.AddressResolverOptions;
-import io.vertx.core.json.JsonArray;
-import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -19,14 +18,14 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.util.Constants;
-import org.yaml.snakeyaml.Yaml;
+import org.deadbeef.util.YAMLMapperFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Map;
+import java.util.List;
 import java.util.function.Function;
 
 @Slf4j
@@ -42,8 +41,8 @@ public final class Bootstrap {
     throw new IllegalStateException();
   }
 
-  @SuppressWarnings("unchecked")
-  public static JsonObject loadYamlFileConfig(String pathStr) {
+  public static <C extends ProxyConfig> C loadYamlFileConfig(
+      String pathStr, @NonNull Class<C> type) {
     Preconditions.checkArgument(StringUtils.isNotEmpty(pathStr), "empty config path!");
     Path path = Paths.get(pathStr);
     Preconditions.checkArgument(
@@ -51,16 +50,14 @@ public final class Bootstrap {
         "Illegal config path: %s",
         pathStr);
     try (InputStream inputStream = Files.newInputStream(path)) {
-      Yaml yaml = new Yaml();
-      Object load = yaml.load(inputStream);
-      Preconditions.checkArgument(load instanceof Map, "%s can't be casted to Map!", load);
-      return new JsonObject((Map<String, Object>) load);
+      YAMLMapper yamlMapper = new YAMLMapperFactory().get();
+      return yamlMapper.readValue(inputStream, type);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
-  public static JsonObject loadCommandLineConfig(String[] args) {
+  public static <C extends ProxyConfig> C loadCommandLineConfig(String[] args, Class<C> type) {
     Options options = new Options().addOption("c", "config", true, "yaml config path");
     CommandLineParser parser = new DefaultParser();
     CommandLine commandLine;
@@ -69,15 +66,15 @@ public final class Bootstrap {
     } catch (ParseException e) {
       throw new IllegalArgumentException(e);
     }
-    JsonObject config = loadYamlFileConfig(commandLine.getOptionValue('c'));
+    C config = loadYamlFileConfig(commandLine.getOptionValue('c'), type);
     if (log.isDebugEnabled()) {
       log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
     return config;
   }
 
-  public static <A extends ProxyVerticle> void deploy(
-      @NonNull Vertx vertx, @NonNull Function<JsonObject, A> factory, @NonNull JsonObject config) {
+  public static <A extends ProxyVerticle<C>, C extends ProxyConfig> void deploy(
+      @NonNull Vertx vertx, @NonNull Function<C, A> factory, @NonNull C config) {
     log.info("Native transport enable status: {}", vertx.isNativeTransportEnabled());
     vertx.deployVerticle(
         () -> factory.apply(config),
@@ -92,29 +89,30 @@ public final class Bootstrap {
         });
   }
 
-  public static Vertx vertx(JsonObject config) {
+  public static Vertx vertx(@NonNull ProxyConfig config) {
     VertxOptions vertxOptions = new VertxOptions();
-    vertxOptions.setPreferNativeTransport(config.getBoolean("preferNativeTransport", Boolean.TRUE));
-    JsonArray addressResolverArray = config.getJsonArray("addressResolver");
+    if (config.getPreferNativeTransport() != null) {
+      vertxOptions.setPreferNativeTransport(config.getPreferNativeTransport());
+    }
+    List<String> addressResolverArray = config.getAddressResolver();
     if (addressResolverArray != null && !addressResolverArray.isEmpty()) {
       AddressResolverOptions addressResolverOptions = new AddressResolverOptions();
-      for (Object element : addressResolverArray) {
-        if (element instanceof String) {
-          addressResolverOptions.addServer(((String) element));
-        }
+      for (String s : addressResolverArray) {
+        addressResolverOptions.addServer(s);
       }
+      vertxOptions.setAddressResolverOptions(addressResolverOptions);
     }
     return Vertx.vertx(vertxOptions);
   }
 
-  public static <A extends ProxyVerticle> void bootstrap(
-      Function<JsonObject, A> factory, JsonObject config) {
+  public static <A extends ProxyVerticle<C>, C extends ProxyConfig> void bootstrap(
+      Function<C, A> factory, C config) {
     Vertx vertx = vertx(config);
     deploy(vertx, factory, config);
   }
 
-  public static <A extends ProxyVerticle> void bootstrap(
-      Function<JsonObject, A> factory, String[] args) {
-    bootstrap(factory, loadCommandLineConfig(args));
+  public static <A extends ProxyVerticle<C>, C extends ProxyConfig> void bootstrap(
+      Function<C, A> factory, String[] args, Class<C> configType) {
+    bootstrap(factory, loadCommandLineConfig(args, configType));
   }
 }

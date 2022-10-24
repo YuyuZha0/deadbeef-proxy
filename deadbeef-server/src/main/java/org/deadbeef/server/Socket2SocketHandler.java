@@ -83,10 +83,6 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
         .onFailure(errorHandler)
         .onSuccess(
             upperSocket -> {
-              HttpProto.ConnectResult ok =
-                  HttpProto.ConnectResult.newBuilder()
-                      .setCode(HttpResponseStatus.OK.code())
-                      .build();
               Utils.exchangeCloseHook(upperSocket, downSocket);
               prefixAndAction.accept(
                   upperSocket,
@@ -100,6 +96,10 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
                           ar.cause());
                     }
                   });
+              HttpProto.ConnectResult ok =
+                  HttpProto.ConnectResult.newBuilder()
+                      .setCode(HttpResponseStatus.OK.code())
+                      .build();
               downSocket.write(
                   Prefix.serializeToBuffer(ok),
                   ar -> {

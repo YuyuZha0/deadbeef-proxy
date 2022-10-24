@@ -7,7 +7,6 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.json.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
@@ -15,60 +14,54 @@ import org.deadbeef.bootstrap.ProxyVerticle;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
-public final class HttpVerticle extends ProxyVerticle {
+public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
 
-  public HttpVerticle(JsonObject config) {
+  private static final int DEFAULT_TIMEOUT = (int) TimeUnit.SECONDS.toMillis(10);
+
+  public HttpVerticle(ServerConfig config) {
     super(config);
   }
 
   @Override
   public void start(Promise<Void> startPromise) {
-    HttpClient httpClient = getVertx().createHttpClient(clientOptions());
-    HttpServer httpServer = getVertx().createHttpServer(serverOptions());
+
+    ServerConfig config = getConfig();
+
+    HttpClient httpClient =
+        getVertx()
+            .createHttpClient(
+                getOptionsOrDefault(
+                    config.getHttpClientOptions(),
+                    () ->
+                        new HttpClientOptions()
+                            .setMaxPoolSize(128)
+                            .setConnectTimeout(DEFAULT_TIMEOUT)
+                            .setReadIdleTimeout(DEFAULT_TIMEOUT)));
+    HttpServer httpServer =
+        getVertx()
+            .createHttpServer(
+                getOptionsOrDefault(
+                    config.getHttpServerOptions(),
+                    () ->
+                        new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true)));
 
     Handler<HttpServerRequest> requestHandler =
         new Http2HttpHandler(
-            getVertx(),
-            httpClient,
-            ProxyAuthenticationValidator.fromJsonArray(
-                getConfig().getJsonArray("auth"), "secretId", "secretKey"));
+            getVertx(), httpClient, ProxyAuthenticationValidator.fromEntries(config.getAuth()));
     httpServer.requestHandler(requestHandler);
 
     registerCloseHook(httpServer::close);
     registerCloseHook(httpClient::close);
 
     httpServer.listen(
-        getConfig().getInteger("httpPort", 14483),
+        config.getHttpPort(),
         result -> {
           if (result.succeeded()) {
-            log.info("Start http server listening on port: {}", result.result().actualPort());
+            log.info("Start HTTP handler listening on port: {}", result.result().actualPort());
             startPromise.tryComplete();
           } else {
             startPromise.tryFail(result.cause());
           }
         });
-  }
-
-  private HttpServerOptions serverOptions() {
-    JsonObject serverOptions = getConfig().getJsonObject("httpServer");
-    if (serverOptions != null) {
-      return new HttpServerOptions(serverOptions);
-    } else {
-      return enableTcpOptimizationWhenAvailable(
-          new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true));
-    }
-  }
-
-  private HttpClientOptions clientOptions() {
-    JsonObject clientOptions = getConfig().getJsonObject("httpClient");
-    if (clientOptions != null) {
-      return new HttpClientOptions(clientOptions);
-    } else {
-      return enableTcpOptimizationWhenAvailable(
-          new HttpClientOptions()
-              .setMaxPoolSize(128)
-              .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10))
-              .setReadIdleTimeout((int) TimeUnit.SECONDS.toMillis(10)));
-    }
   }
 }

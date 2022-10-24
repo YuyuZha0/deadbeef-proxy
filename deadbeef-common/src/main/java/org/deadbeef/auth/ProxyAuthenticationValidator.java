@@ -7,15 +7,11 @@ import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.vertx.core.json.JsonArray;
-import io.vertx.core.json.JsonObject;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
 import org.deadbeef.protocol.HttpProto;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +42,7 @@ public final class ProxyAuthenticationValidator
   }
 
   public static ProxyAuthenticationValidator fromEntries(
-      @NonNull Iterable<Map.Entry<String, String>> iterable) {
+      @NonNull Iterable<? extends Map.Entry<String, String>> iterable) {
     ImmutableListMultimap.Builder<String, HashFunction> builder = ImmutableListMultimap.builder();
     for (Map.Entry<String, String> entry : iterable) {
       Preconditions.checkArgument(StringUtils.isNotEmpty(entry.getKey()), "empty secretId!");
@@ -58,19 +54,6 @@ public final class ProxyAuthenticationValidator
           entry.getKey(), Hashing.hmacSha256(entry.getValue().getBytes(StandardCharsets.UTF_8)));
     }
     return new ProxyAuthenticationValidator(builder.build());
-  }
-
-  public static ProxyAuthenticationValidator fromJsonArray(
-      @NonNull JsonArray array, @NonNull String keyName, @NonNull String valueName) {
-    int len = array.size();
-    List<Map.Entry<String, String>> list = new ArrayList<>();
-    for (int i = 0; i < len; ++i) {
-      JsonObject object = array.getJsonObject(i);
-      if (object != null) {
-        list.add(Pair.of(object.getString("secretId"), object.getString("secretKey")));
-      }
-    }
-    return fromEntries(list);
   }
 
   public boolean testString(String input) {
