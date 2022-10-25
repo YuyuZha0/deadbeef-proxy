@@ -4,9 +4,9 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import lombok.NonNull;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
-import org.deadbeef.protocol.HttpHeaderEncoder;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.util.HttpHeaderEncoder;
 
 import java.util.function.Function;
 

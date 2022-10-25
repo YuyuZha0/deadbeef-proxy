@@ -12,9 +12,9 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.protocol.Prefix;
-import org.deadbeef.protocol.PrefixAndAction;
-import org.deadbeef.protocol.ProxyStreamPrefixVisitor;
+import org.deadbeef.streams.Prefix;
+import org.deadbeef.streams.PrefixAndAction;
+import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Utils;
 
 import java.io.IOException;

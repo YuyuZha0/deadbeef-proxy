@@ -3,8 +3,8 @@ package org.deadbeef.server;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpClientResponse;
 import org.apache.commons.lang3.StringUtils;
-import org.deadbeef.protocol.HttpHeaderEncoder;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.util.HttpHeaderEncoder;
 
 import java.util.function.Function;
 

@@ -19,12 +19,12 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
-import org.deadbeef.protocol.HttpHeaderDecoder;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.protocol.Prefix;
-import org.deadbeef.protocol.ProxyStreamPrefixVisitor;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.streams.Prefix;
+import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
+import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
 
 import java.io.IOException;

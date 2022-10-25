@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.util;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
@@ -8,7 +8,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetClientOptions;
 import io.vertx.core.net.NetServerOptions;
 import lombok.SneakyThrows;
-import org.deadbeef.util.YAMLMapperFactory;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -58,7 +57,7 @@ public class ConfigDemoGenerator {
   @SneakyThrows
   private void printConfig(JsonObject jsonObject) {
     YAMLMapper yamlMapper = new YAMLMapperFactory().get();
-    //YAMLMapper yamlMapper = new YAMLMapper();
+    // YAMLMapper yamlMapper = new YAMLMapper();
     yamlMapper.enable(SerializationFeature.INDENT_OUTPUT);
     String dump = yamlMapper.writeValueAsString(jsonObject);
     System.out.println(dump);

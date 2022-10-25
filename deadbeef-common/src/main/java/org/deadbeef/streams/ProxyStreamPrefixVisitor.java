@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.streams;
 
 import com.google.common.base.Strings;
 import io.netty.buffer.ByteBuf;

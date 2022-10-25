@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.streams;
 
 import com.google.protobuf.GeneratedMessageV3;
 import io.netty.buffer.ByteBuf;
@@ -18,7 +18,7 @@ public final class Prefix {
   }
 
   private static ByteBuf newByteBuf(int size) {
-    return VertxByteBufAllocator.UNPOOLED_ALLOCATOR.buffer(size);
+    return VertxByteBufAllocator.DEFAULT.buffer(size);
   }
 
   public static Buffer serializeToBuffer(byte[] data) {

@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.util;
 
 import com.google.common.base.CaseFormat;
 import io.netty.handler.codec.http.HttpHeaderNames;

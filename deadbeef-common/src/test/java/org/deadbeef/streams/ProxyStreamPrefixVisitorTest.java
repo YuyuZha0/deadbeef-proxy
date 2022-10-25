@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.streams;
 
 import com.google.common.base.Strings;
 import com.google.protobuf.InvalidProtocolBufferException;
@@ -15,6 +15,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.deadbeef.protocol.HttpProto;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;

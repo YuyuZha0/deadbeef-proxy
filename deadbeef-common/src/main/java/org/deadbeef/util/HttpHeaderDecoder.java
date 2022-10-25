@@ -1,9 +1,10 @@
-package org.deadbeef.protocol;
+package org.deadbeef.util;
 
 import com.google.common.base.Splitter;
 import com.google.protobuf.Descriptors;
 import io.vertx.core.MultiMap;
 import lombok.NonNull;
+import org.deadbeef.protocol.HttpProto;
 
 import java.util.Iterator;
 import java.util.List;

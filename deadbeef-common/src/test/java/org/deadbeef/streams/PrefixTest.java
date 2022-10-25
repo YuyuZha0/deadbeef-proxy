@@ -1,4 +1,4 @@
-package org.deadbeef.protocol;
+package org.deadbeef.streams;
 
 import org.junit.Test;
 

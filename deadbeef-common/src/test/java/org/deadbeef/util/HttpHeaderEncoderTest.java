@@ -1,7 +1,8 @@
-package org.deadbeef.protocol;
+package org.deadbeef.util;
 
 import com.google.common.base.Splitter;
 import io.vertx.core.MultiMap;
+import org.deadbeef.protocol.HttpProto;
 import org.junit.Test;
 
 import java.util.Map;

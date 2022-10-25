@@ -7,8 +7,8 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
-import org.deadbeef.protocol.HttpHeaderEncoder;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.util.HttpHeaderEncoder;
 
 import java.util.HashMap;
 import java.util.Map;
