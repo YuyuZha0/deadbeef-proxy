@@ -24,6 +24,7 @@ import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
 
 import java.io.IOException;
+import java.util.NoSuchElementException;
 
 @Slf4j
 public final class Http2SocketHandler implements Handler<HttpServerRequest> {
@@ -103,6 +104,9 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
             }
           });
     } catch (Exception cause) {
+      if (cause instanceof NoSuchElementException) {
+        return;
+      }
       errorHandler.handle(cause);
       netSocket.close();
     }
