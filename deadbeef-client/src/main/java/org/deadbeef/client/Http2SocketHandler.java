@@ -16,6 +16,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.streams.DefaultPipeFactory;
+import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.PrefixAndAction;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
@@ -29,6 +31,7 @@ import java.util.NoSuchElementException;
 @Slf4j
 public final class Http2SocketHandler implements Handler<HttpServerRequest> {
 
+  private final PipeFactory pipeFactory = new DefaultPipeFactory();
   private final NetClient netClient;
   private final AddressPicker addressPicker;
   private final ProxyStreamPrefixVisitor<NetSocket> proxyStreamPrefixVisitor;
@@ -41,7 +44,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
       @NonNull ProxyAuthenticationGenerator generator) {
     this.netClient = netClient;
     this.addressPicker = addressPicker;
-    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx);
+    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.httpsConnectEncoder = new HttpsConnectEncoder(generator);
   }
 
@@ -97,7 +100,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
               NetSocket clientSocket = ar.result();
               Utils.exchangeCloseHook(clientSocket, netSocket);
               prefixAndAction.apply(clientSocket);
-              Utils.newPipe(clientSocket, false, false).to(netSocket);
+              pipeFactory.newPipe(clientSocket).to(netSocket);
             } else {
               errorHandler.handle(ar.cause());
               netSocket.close();

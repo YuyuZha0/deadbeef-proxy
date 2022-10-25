@@ -21,7 +21,6 @@ import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.util.Constants;
-import org.deadbeef.util.Utils;
 
 import java.util.function.BiConsumer;
 
@@ -29,9 +28,15 @@ import java.util.function.BiConsumer;
 public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
   private final VertxInternal vertx;
+  private final PipeFactory pipeFactory;
 
-  public ProxyStreamPrefixVisitor(@NonNull Vertx vertx) {
+  public ProxyStreamPrefixVisitor(@NonNull Vertx vertx, @NonNull PipeFactory pipeFactory) {
     this.vertx = (VertxInternal) vertx;
+    this.pipeFactory = pipeFactory;
+  }
+
+  public ProxyStreamPrefixVisitor(Vertx vertx) {
+    this(vertx, new DefaultPipeFactory());
   }
 
   private static void clearHandlers(ReadStream<?> readStream) {
@@ -102,7 +107,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       return;
     }
     if (remaining == null) {
-      Pipe<Buffer> pipe = Utils.newPipe(src, false, false);
+      Pipe<Buffer> pipe = pipeFactory.newPipe(src);
       pipe.to(dst, handler);
       src.resume();
       return;
@@ -118,7 +123,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
             handler.handle(ar);
           }
         });
-    Pipe<Buffer> pipe = Utils.newPipe(src, false, false);
+    Pipe<Buffer> pipe = pipeFactory.newPipe(src);
     pipe.to(dst, handler);
     src.resume();
   }

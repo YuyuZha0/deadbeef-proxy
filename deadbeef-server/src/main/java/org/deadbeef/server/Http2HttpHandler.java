@@ -18,12 +18,13 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.streams.DefaultPipeFactory;
+import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
-import org.deadbeef.util.Utils;
 
 import java.io.IOException;
 
@@ -32,6 +33,8 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
   private final HttpClientResponseEncoder encoder = new HttpClientResponseEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
+
+  private final PipeFactory pipeFactory = new DefaultPipeFactory();
   private final HttpClient httpClient;
   private final ProxyStreamPrefixVisitor<HttpClientRequest> proxyStreamPrefixVisitor;
 
@@ -42,7 +45,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       @NonNull HttpClient httpClient,
       @NonNull ProxyAuthenticationValidator validator) {
     this.httpClient = httpClient;
-    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx);
+    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.proxyAuthenticationValidator = validator;
   }
 
@@ -117,7 +120,8 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       return;
     }
     serverResponse.write(prefixData).onFailure(errorHandler);
-    Utils.newPipe(clientResponse, false, false)
+    pipeFactory
+        .newPipe(clientResponse)
         .to(serverResponse)
         .onSuccess(
             v -> {

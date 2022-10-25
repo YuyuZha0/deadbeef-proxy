@@ -21,6 +21,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.streams.DefaultPipeFactory;
+import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
@@ -35,6 +37,8 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
   private final HttpServerRequestEncoder httpServerRequestEncoder = new HttpServerRequestEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
 
+  private final PipeFactory pipeFactory = new DefaultPipeFactory();
+
   private final ProxyStreamPrefixVisitor<HttpServerResponse> proxyStreamPrefixVisitor;
   private final HttpClient httpClient;
   private final AddressPicker addressPicker;
@@ -46,7 +50,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       @NonNull HttpClient httpClient,
       @NonNull AddressPicker addressPicker,
       @NonNull ProxyAuthenticationGenerator generator) {
-    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx);
+    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
     this.proxyAuthenticationGenerator = generator;
