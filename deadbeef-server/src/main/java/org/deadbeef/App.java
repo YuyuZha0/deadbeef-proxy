@@ -11,6 +11,7 @@ import org.deadbeef.server.ServerConfig;
 public final class App {
 
   public static void main(String[] args) {
+    Bootstrap.printLogo();
     // args = new String[] {"-c", "/Users/zhaoyuyu/IdeaProjects/deadbeef-proxy/server-config.yaml"};
     ServerConfig config = Bootstrap.loadCommandLineConfig(args, ServerConfig.class);
     Vertx vertx = Bootstrap.vertx(config);

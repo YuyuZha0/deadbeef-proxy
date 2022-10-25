@@ -32,6 +32,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
   }
 
   public static void main(String[] args) {
+    Bootstrap.printLogo();
     // args = new String[] {"-c", "/Users/zhaoyuyu/IdeaProjects/deadbeef-proxy/client-config.yaml"};
     Bootstrap.bootstrap(App::new, args, ClientConfig.class);
   }

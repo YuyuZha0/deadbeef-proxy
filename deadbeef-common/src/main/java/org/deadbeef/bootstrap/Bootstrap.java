@@ -31,6 +31,17 @@ import java.util.function.Function;
 @Slf4j
 public final class Bootstrap {
 
+  private static final String LOGO =
+      "\n"
+          + " ________  _______   ________  ________  ________  _______   _______   ________ \n"
+          + "|\\   ___ \\|\\  ___ \\ |\\   __  \\|\\   ___ \\|\\   __  \\|\\  ___ \\ |\\  ___ \\ |\\  _____\\\n"
+          + "\\ \\  \\_|\\ \\ \\   __/|\\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\|\\ /\\ \\   __/|\\ \\   __/|\\ \\  \\__/ \n"
+          + " \\ \\  \\ \\\\ \\ \\  \\_|/_\\ \\   __  \\ \\  \\ \\\\ \\ \\   __  \\ \\  \\_|/_\\ \\  \\_|/_\\ \\   __\\\n"
+          + "  \\ \\  \\_\\\\ \\ \\  \\_|\\ \\ \\  \\ \\  \\ \\  \\_\\\\ \\ \\  \\|\\  \\ \\  \\_|\\ \\ \\  \\_|\\ \\ \\  \\_|\n"
+          + "   \\ \\_______\\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\__\\ \n"
+          + "    \\|_______|\\|_______|\\|__|\\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|__| \n"
+          + "                                                                                \n";
+
   static {
     System.setProperty(
         "vertx.logger-delegate-factory-class-name", SLF4JLogDelegateFactory.class.getName());
@@ -39,6 +50,14 @@ public final class Bootstrap {
 
   private Bootstrap() {
     throw new IllegalStateException();
+  }
+
+  public static void printLogo() {
+    if ("\n".equals(System.lineSeparator())) {
+      System.out.println(LOGO);
+    } else {
+      System.out.println(StringUtils.replace(LOGO, "\n", System.lineSeparator()));
+    }
   }
 
   public static <C extends ProxyConfig> C loadYamlFileConfig(
