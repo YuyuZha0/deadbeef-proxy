@@ -24,7 +24,6 @@ import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
 
 import java.io.IOException;
-import java.util.NoSuchElementException;
 
 @Slf4j
 public final class Http2SocketHandler implements Handler<HttpServerRequest> {
@@ -62,8 +61,8 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
           if (ar.succeeded()) {
             openTunnel(ar.result(), netSocket, serverRequest, errorHandler);
           } else {
-            netSocket.close();
             errorHandler.handle(ar.cause());
+            netSocket.close();
           }
         });
   }
@@ -79,6 +78,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
       connectResult = HttpProto.ConnectResult.parseFrom(inputStream);
     } catch (IOException e) {
       errorHandler.handle(e);
+      netSocket.close();
       return;
     }
     if (log.isDebugEnabled()) {
@@ -98,15 +98,13 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
               prefixAndAction.apply(clientSocket);
               Utils.newPipe(clientSocket, false, false).to(netSocket);
             } else {
-              netSocket.close();
               errorHandler.handle(ar.cause());
+              netSocket.close();
             }
           });
     } catch (Exception cause) {
-      if (cause instanceof NoSuchElementException) {
-        return;
-      }
       errorHandler.handle(cause);
+      netSocket.close();
     }
   }
 
@@ -121,6 +119,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
     Handler<Throwable> errorHandler =
         HttpRequestUtils.createErrorHandler(serverRequest.response(), log);
 
+    serverRequest.pause();
     netClient.connect(
         address,
         ar -> {
