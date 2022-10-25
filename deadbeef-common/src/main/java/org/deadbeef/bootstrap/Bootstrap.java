@@ -7,15 +7,13 @@ import io.netty.util.internal.logging.Slf4JLoggerFactory;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
+import io.vertx.core.cli.CLI;
+import io.vertx.core.cli.CommandLine;
+import io.vertx.core.cli.Option;
 import io.vertx.core.dns.AddressResolverOptions;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.DefaultParser;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.YAMLMapperFactory;
@@ -25,6 +23,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
@@ -41,6 +40,17 @@ public final class Bootstrap {
           + "   \\ \\_______\\ \\_______\\ \\__\\ \\__\\ \\_______\\ \\_______\\ \\_______\\ \\_______\\ \\__\\ \n"
           + "    \\|_______|\\|_______|\\|__|\\|__|\\|_______|\\|_______|\\|_______|\\|_______|\\|__| \n"
           + "                                                                                \n";
+
+  private static final String BYE =
+      "\n"
+          + "  ____             _ \n"
+          + " |  _ \\           | |\n"
+          + " | |_) |_   _  ___| |\n"
+          + " |  _ <| | | |/ _ \\ |\n"
+          + " | |_) | |_| |  __/_|\n"
+          + " |____/ \\__, |\\___(_)\n"
+          + "         __/ |       \n"
+          + "        |___/        \n";
 
   static {
     System.setProperty(
@@ -62,7 +72,7 @@ public final class Bootstrap {
 
   public static <C extends ProxyConfig> C loadYamlFileConfig(
       String pathStr, @NonNull Class<C> type) {
-    Preconditions.checkArgument(StringUtils.isNotEmpty(pathStr), "empty config path!");
+    Preconditions.checkArgument(StringUtils.isNotEmpty(pathStr), "Empty config path!");
     Path path = Paths.get(pathStr);
     Preconditions.checkArgument(
         Files.exists(path) && Files.isRegularFile(path) && Files.isReadable(path),
@@ -77,15 +87,19 @@ public final class Bootstrap {
   }
 
   public static <C extends ProxyConfig> C loadCommandLineConfig(String[] args, Class<C> type) {
-    Options options = new Options().addOption("c", "config", true, "yaml config path");
-    CommandLineParser parser = new DefaultParser();
-    CommandLine commandLine;
-    try {
-      commandLine = parser.parse(options, args);
-    } catch (ParseException e) {
-      throw new IllegalArgumentException(e);
-    }
-    C config = loadYamlFileConfig(commandLine.getOptionValue('c'), type);
+    CLI cli =
+        CLI.create("deadbeef")
+            .addOption(
+                new Option()
+                    .setShortName("c")
+                    .setLongName("config")
+                    .setDescription("yaml config path")
+                    .setSingleValued(true)
+                    .setArgName("config-path"));
+
+    CommandLine commandLine = cli.parse(Arrays.asList(args), true);
+    C config = loadYamlFileConfig(commandLine.getOptionValue("c"), type);
+    config.verify();
     if (log.isDebugEnabled()) {
       log.debug("Load config successfully:{}{}", Constants.lineSeparator(), config);
     }
@@ -121,7 +135,23 @@ public final class Bootstrap {
       }
       vertxOptions.setAddressResolverOptions(addressResolverOptions);
     }
-    return Vertx.vertx(vertxOptions);
+
+    return addShutdownHook(Vertx.vertx(vertxOptions));
+  }
+
+  private static Vertx addShutdownHook(Vertx vertx) {
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  try {
+                    vertx.close().toCompletionStage().toCompletableFuture().join();
+                  } catch (Exception ignore) {
+                  }
+                  // We can't use log, log frameworks may have its own shutdownHooks.
+                  System.out.println(BYE);
+                }));
+    return vertx;
   }
 
   public static <A extends ProxyVerticle<C>, C extends ProxyConfig> void bootstrap(
