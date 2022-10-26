@@ -21,7 +21,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
-import org.deadbeef.streams.DefaultPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
@@ -37,7 +36,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
   private final HttpServerRequestEncoder httpServerRequestEncoder = new HttpServerRequestEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
 
-  private final PipeFactory pipeFactory = new DefaultPipeFactory();
+  private final PipeFactory pipeFactory;
 
   private final ProxyStreamPrefixVisitor<HttpServerResponse> proxyStreamPrefixVisitor;
   private final HttpClient httpClient;
@@ -49,11 +48,13 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
       @NonNull AddressPicker addressPicker,
-      @NonNull ProxyAuthenticationGenerator generator) {
+      @NonNull ProxyAuthenticationGenerator generator,
+      @NonNull PipeFactory pipeFactory) {
     this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
     this.proxyAuthenticationGenerator = generator;
+    this.pipeFactory = pipeFactory;
   }
 
   private boolean should100Continue(HttpServerRequest request) {
@@ -97,7 +98,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
     serverRequest.pause();
     HttpServerResponse serverResponse = serverRequest.response();
-    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse, log);
+    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse);
     httpClient
         .request(requestOptions)
         .onSuccess(

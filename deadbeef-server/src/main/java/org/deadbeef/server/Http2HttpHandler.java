@@ -18,7 +18,6 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.streams.DefaultPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
@@ -33,8 +32,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
   private final HttpClientResponseEncoder encoder = new HttpClientResponseEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
-
-  private final PipeFactory pipeFactory = new DefaultPipeFactory();
+  private final PipeFactory pipeFactory;
   private final HttpClient httpClient;
   private final ProxyStreamPrefixVisitor<HttpClientRequest> proxyStreamPrefixVisitor;
 
@@ -43,21 +41,27 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
   public Http2HttpHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
-      @NonNull ProxyAuthenticationValidator validator) {
+      @NonNull ProxyAuthenticationValidator validator,
+      @NonNull PipeFactory pipeFactory) {
     this.httpClient = httpClient;
     this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.proxyAuthenticationValidator = validator;
+    this.pipeFactory = pipeFactory;
   }
 
   @Override
   public void handle(HttpServerRequest serverRequest) {
     HttpServerResponse serverResponse = serverRequest.response();
+    if (serverRequest.method() != HttpMethod.POST) {
+      serverResponse.setStatusCode(HttpResponseStatus.METHOD_NOT_ALLOWED.code()).end();
+      return;
+    }
     if (!proxyAuthenticationValidator.testString(
         serverRequest.getHeader(Constants.authHeaderName()))) {
       serverResponse.setStatusCode(HttpResponseStatus.PROXY_AUTHENTICATION_REQUIRED.code()).end();
       return;
     }
-    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse, log);
+    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse);
     proxyStreamPrefixVisitor
         .visit(serverRequest)
         .onFailure(errorHandler)

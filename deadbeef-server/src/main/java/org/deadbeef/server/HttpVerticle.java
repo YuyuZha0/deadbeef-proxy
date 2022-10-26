@@ -10,6 +10,7 @@ import io.vertx.core.http.HttpServerRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
+import org.deadbeef.streams.DefaultPipeFactory;
 
 import java.util.concurrent.TimeUnit;
 
@@ -22,32 +23,40 @@ public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
     super(config);
   }
 
+  private HttpClient createHttpClient() {
+    return getVertx()
+        .createHttpClient(
+            getOptionsOrDefault(
+                getConfig().getHttpClientOptions(),
+                () ->
+                    new HttpClientOptions()
+                        .setMaxPoolSize(128)
+                        .setConnectTimeout(DEFAULT_TIMEOUT)
+                        .setReadIdleTimeout(DEFAULT_TIMEOUT)));
+  }
+
+  private HttpServer createHttpServer() {
+    return getVertx()
+        .createHttpServer(
+            getOptionsOrDefault(
+                getConfig().getHttpServerOptions(),
+                () -> new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true)));
+  }
+
   @Override
   public void start(Promise<Void> startPromise) {
 
     ServerConfig config = getConfig();
 
-    HttpClient httpClient =
-        getVertx()
-            .createHttpClient(
-                getOptionsOrDefault(
-                    config.getHttpClientOptions(),
-                    () ->
-                        new HttpClientOptions()
-                            .setMaxPoolSize(128)
-                            .setConnectTimeout(DEFAULT_TIMEOUT)
-                            .setReadIdleTimeout(DEFAULT_TIMEOUT)));
-    HttpServer httpServer =
-        getVertx()
-            .createHttpServer(
-                getOptionsOrDefault(
-                    config.getHttpServerOptions(),
-                    () ->
-                        new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true)));
+    HttpClient httpClient = createHttpClient();
+    HttpServer httpServer = createHttpServer();
 
     Handler<HttpServerRequest> requestHandler =
         new Http2HttpHandler(
-            getVertx(), httpClient, ProxyAuthenticationValidator.fromEntries(config.getAuth()));
+            getVertx(),
+            httpClient,
+            ProxyAuthenticationValidator.fromEntries(config.getAuth()),
+            new DefaultPipeFactory());
     httpServer.requestHandler(requestHandler);
 
     registerCloseHook(httpServer::close);

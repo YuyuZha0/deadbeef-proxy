@@ -17,14 +17,14 @@ Vertx http proxy, for some reason I can't talk much.
 
 ### System Requirements
 
-`java >= 11`
+`java(jdk/jre) >= 11`
 
-*if you want to compile the project yourself, you may need `maven <= 3.6.3`*
+**If you want to compile the project yourself, you may need `maven`(version of `3.6.3` is preferred)**
 
 The project contains some platform dependent components, it is recommended for you to compile the code on you device to
 gain better performance.
 
-### How to use?
+### Usage
 
 #### Local
 
@@ -52,7 +52,7 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]
 
 Start a deamon process on your remote machine to handle requests from you local proxy server.
 
-*Note: DEADBEEF-SERVER handles HTTP/HTTPS on different ports, configure you firewall properly*
+**Note: `deadbeef-server` handles HTTP/HTTPS on different ports, configure your firewall properly**
 
 You may start with the following command:
 

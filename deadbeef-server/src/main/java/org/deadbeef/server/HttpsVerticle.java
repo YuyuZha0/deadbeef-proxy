@@ -10,6 +10,7 @@ import io.vertx.core.net.NetSocket;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
+import org.deadbeef.streams.DefaultPipeFactory;
 
 @Slf4j
 public final class HttpsVerticle extends ProxyVerticle<ServerConfig> {
@@ -18,22 +19,31 @@ public final class HttpsVerticle extends ProxyVerticle<ServerConfig> {
     super(config);
   }
 
+  private NetClient createNetClient() {
+    return getVertx()
+        .createNetClient(
+            getOptionsOrDefault(
+                getConfig().getNetClientOptions(),
+                () -> new NetClientOptions().setConnectTimeout(10_000)));
+  }
+
+  private NetServer createNetServer() {
+    return getVertx()
+        .createNetServer(
+            getOptionsOrDefault(getConfig().getNetServerOptions(), NetServerOptions::new));
+  }
+
   @Override
   public void start(Promise<Void> startPromise) {
     ServerConfig config = getConfig();
-    NetServer netServer =
-        getVertx()
-            .createNetServer(
-                getOptionsOrDefault(config.getNetServerOptions(), NetServerOptions::new));
-    NetClient netClient =
-        getVertx()
-            .createNetClient(
-                getOptionsOrDefault(
-                    config.getNetClientOptions(),
-                    () -> new NetClientOptions().setConnectTimeout(10_000)));
+    NetServer netServer = createNetServer();
+    NetClient netClient = createNetClient();
     Handler<NetSocket> connectHandler =
         new Socket2SocketHandler(
-            getVertx(), netClient, ProxyAuthenticationValidator.fromEntries(config.getAuth()));
+            getVertx(),
+            netClient,
+            ProxyAuthenticationValidator.fromEntries(config.getAuth()),
+            new DefaultPipeFactory());
     netServer.connectHandler(connectHandler);
 
     netServer.listen(

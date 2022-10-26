@@ -13,11 +13,13 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
 import java.util.concurrent.TimeoutException;
 
+@Slf4j
 public final class HttpRequestUtils {
 
   private HttpRequestUtils() {
@@ -56,12 +58,11 @@ public final class HttpRequestUtils {
     }
   }
 
-  public static Handler<Throwable> createErrorHandler(
-      @NonNull HttpServerResponse response, @NonNull Logger logger) {
+  public static Handler<Throwable> createErrorHandler(@NonNull HttpServerResponse response) {
     return Utils.atMostOnce(
         (Throwable cause) -> {
           if (response.closed() || response.ended()) {
-            logger.warn("The response already ended, omitted exception: ", cause);
+            log.warn("The response already ended, omitted exception: ", cause);
             return;
           }
           Buffer msg;

@@ -12,7 +12,6 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.streams.DefaultPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.PrefixAndAction;
@@ -24,7 +23,7 @@ import java.io.IOException;
 @Slf4j
 public final class Socket2SocketHandler implements Handler<NetSocket> {
 
-  private final PipeFactory pipeFactory = new DefaultPipeFactory();
+  private final PipeFactory pipeFactory;
   private final ProxyStreamPrefixVisitor<NetSocket> proxyStreamPrefixVisitor;
   private final NetClient netClient;
 
@@ -33,10 +32,12 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
   public Socket2SocketHandler(
       @NonNull Vertx vertx,
       @NonNull NetClient netClient,
-      @NonNull ProxyAuthenticationValidator validator) {
+      @NonNull ProxyAuthenticationValidator validator,
+      @NonNull PipeFactory pipeFactory) {
     this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.netClient = netClient;
     this.proxyAuthenticationValidator = validator;
+    this.pipeFactory = pipeFactory;
   }
 
   private static Handler<Throwable> createErrorHandler(NetSocket netSocket) {
