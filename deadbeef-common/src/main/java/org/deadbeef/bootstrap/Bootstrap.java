@@ -62,12 +62,17 @@ public final class Bootstrap {
     throw new IllegalStateException();
   }
 
-  public static void printLogo() {
-    if ("\n".equals(System.lineSeparator())) {
-      System.out.println(LOGO);
+  private static String replaceLineSeparator(String input) {
+    String s = System.lineSeparator();
+    if ("\n".equals(s)) {
+      return input;
     } else {
-      System.out.println(StringUtils.replace(LOGO, "\n", System.lineSeparator()));
+      return StringUtils.replace(input, "\n", s);
     }
+  }
+
+  public static void printLogo() {
+    System.out.println(replaceLineSeparator(LOGO));
   }
 
   public static <C extends ProxyConfig> C loadYamlFileConfig(
@@ -149,7 +154,7 @@ public final class Bootstrap {
                   } catch (Exception ignore) {
                   }
                   // We can't use log, log frameworks may have its own shutdownHooks.
-                  System.out.println(BYE);
+                  System.out.println(replaceLineSeparator(BYE));
                 }));
     return vertx;
   }
