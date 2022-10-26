@@ -3,7 +3,6 @@ package org.deadbeef.streams;
 import com.google.common.base.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
-import io.netty.util.ReferenceCountUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -21,6 +20,7 @@ import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.util.Constants;
+import org.deadbeef.util.Utils;
 
 import java.util.function.BiConsumer;
 
@@ -37,24 +37,6 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
   public ProxyStreamPrefixVisitor(Vertx vertx) {
     this(vertx, new DefaultPipeFactory());
-  }
-
-  private static void clearHandlers(ReadStream<?> readStream) {
-    if (log.isDebugEnabled()) {
-      log.debug("Clearing handlers on: {}", readStream);
-    }
-    try {
-      readStream.handler(null);
-    } catch (Exception ignore) {
-    }
-    try {
-      readStream.exceptionHandler(null);
-    } catch (Exception ignore) {
-    }
-    try {
-      readStream.endHandler(null);
-    } catch (Exception ignore) {
-    }
   }
 
   public Future<PrefixAndAction<? super W>> visit(ReadStream<Buffer> src) {
@@ -131,7 +113,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
   private static final class PrefixBuffer implements Handler<Buffer> {
 
     private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
-    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(0xff);
+    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.heapBuffer(0xff);
 
     private final ReadStream<Buffer> src;
 
@@ -235,9 +217,9 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       if (log.isDebugEnabled()) {
         log.debug("Release temporary ByteBuf: {}", tempBuf);
       }
-      clearHandlers(src);
-      // tempBuf.clear();
-      ReferenceCountUtil.release(tempBuf);
+      Utils.clearHandlers(src);
+      tempBuf.clear();
+      // ReferenceCountUtil.release(tempBuf);
     }
   }
 }

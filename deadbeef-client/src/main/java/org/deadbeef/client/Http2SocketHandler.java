@@ -120,7 +120,7 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
   public void handle(HttpServerRequest serverRequest) {
     if (serverRequest.method() != HttpMethod.CONNECT
         || StringUtils.isEmpty(serverRequest.getHeader(HttpHeaderNames.HOST))) {
-      serverRequest.response().setStatusCode(HttpResponseStatus.FORBIDDEN.code()).end();
+      serverRequest.response().setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
       return;
     }
     SocketAddress address = addressPicker.apply(serverRequest);

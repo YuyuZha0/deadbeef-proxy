@@ -18,7 +18,7 @@ public final class Prefix {
   }
 
   private static ByteBuf newByteBuf(int size) {
-    return VertxByteBufAllocator.DEFAULT.buffer(size);
+    return VertxByteBufAllocator.DEFAULT.heapBuffer(size);
   }
 
   public static Buffer serializeToBuffer(byte[] data) {

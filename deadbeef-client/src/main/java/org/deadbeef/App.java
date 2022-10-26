@@ -1,5 +1,6 @@
 package org.deadbeef;
 
+import com.codahale.metrics.MetricRegistry;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpClient;
@@ -8,6 +9,7 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
+import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +21,9 @@ import org.deadbeef.client.Http2HttpHandler;
 import org.deadbeef.client.Http2SocketHandler;
 import org.deadbeef.client.ProxyClientRequestHandler;
 import org.deadbeef.route.AddressPicker;
-import org.deadbeef.streams.DefaultPipeFactory;
+import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
+import org.deadbeef.util.ConsoleReporter;
 
 import java.util.concurrent.TimeUnit;
 
@@ -28,6 +31,8 @@ import java.util.concurrent.TimeUnit;
 public final class App extends ProxyVerticle<ClientConfig> {
 
   private static final int DEFAULT_TIMEOUT_IN_MILLS = (int) TimeUnit.SECONDS.toMillis(10);
+
+  private final MetricRegistry metricRegistry = new MetricRegistry();
 
   public App(ClientConfig config) {
     super(config);
@@ -71,6 +76,29 @@ public final class App extends ProxyVerticle<ClientConfig> {
             getOptionsOrDefault(getConfig().getHttpServerOptions(), HttpServerOptions::new));
   }
 
+  private void startReporter() {
+    VertxInternal vertxInternal = (VertxInternal) getVertx();
+    // hack for human friendly bytes
+    ConsoleReporter consoleReporter =
+        ConsoleReporter.forRegistry(metricRegistry)
+            .convertDurationsTo(TimeUnit.MINUTES)
+            .convertRatesTo(TimeUnit.SECONDS)
+            .scheduleOn(vertxInternal.nettyEventLoopGroup().next())
+            .shutdownExecutorOnStop(false)
+            .build();
+    vertxInternal.addCloseHook(
+        promise -> {
+          try {
+            consoleReporter.stop();
+            promise.tryComplete();
+          } catch (Exception e) {
+            promise.tryFail(e);
+          }
+        });
+    consoleReporter.start(1, 5, TimeUnit.MINUTES);
+    log.info("Console reporter started.");
+  }
+
   @Override
   public void start(Promise<Void> startPromise) {
     ClientConfig config = getConfig();
@@ -79,7 +107,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
     HttpClient httpClient = createHttpClient();
     NetClient netClient = createNetClient();
     HttpServer server = createHttpServer();
-    PipeFactory pipeFactory = new DefaultPipeFactory();
+    PipeFactory pipeFactory = new MetricPipeFactory(metricRegistry);
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new Http2HttpHandler(
@@ -110,5 +138,6 @@ public final class App extends ProxyVerticle<ClientConfig> {
             startPromise.tryFail(result.cause());
           }
         });
+    startReporter();
   }
 }

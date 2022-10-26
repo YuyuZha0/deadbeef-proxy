@@ -5,6 +5,7 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.impl.NoStackTraceThrowable;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
@@ -16,12 +17,17 @@ import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.PrefixAndAction;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
+import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
 
 import java.io.IOException;
 
 @Slf4j
 public final class Socket2SocketHandler implements Handler<NetSocket> {
+
+  private static final Buffer OK =
+      Prefix.serializeToBuffer(
+          HttpProto.ConnectResult.newBuilder().setCode(HttpResponseStatus.OK.code()).build());
 
   private final PipeFactory pipeFactory;
   private final ProxyStreamPrefixVisitor<NetSocket> proxyStreamPrefixVisitor;
@@ -49,7 +55,7 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
           } else {
             msg = Throwables.getStackTraceAsString(cause);
           }
-          endThenClose(netSocket, HttpResponseStatus.BAD_GATEWAY, msg);
+          endThenClose(netSocket, HttpRequestUtils.errorMapping(cause), msg);
         });
   }
 
@@ -59,6 +65,7 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
     netSocket.write(
         Prefix.serializeToBuffer(connectResult),
         ar -> {
+          // after writing finished, call end to close the connection.
           netSocket.close();
           if (ar.failed()) {
             log.error("Write response to socket client with exception: ", ar.cause());
@@ -100,12 +107,8 @@ public final class Socket2SocketHandler implements Handler<NetSocket> {
                           ar.cause());
                     }
                   });
-              HttpProto.ConnectResult ok =
-                  HttpProto.ConnectResult.newBuilder()
-                      .setCode(HttpResponseStatus.OK.code())
-                      .build();
               downSocket.write(
-                  Prefix.serializeToBuffer(ok),
+                  OK,
                   ar -> {
                     if (ar.failed()) {
                       downSocket.close();

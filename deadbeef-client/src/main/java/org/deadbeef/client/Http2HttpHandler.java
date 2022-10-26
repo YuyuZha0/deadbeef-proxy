@@ -120,7 +120,6 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
                   .onSuccess(
                       v -> awaitUpperStreamResponse(serverResponse, clientRequest, errorHandler))
                   .onFailure(errorHandler);
-              serverRequest.resume();
             })
         .onFailure(errorHandler);
   }

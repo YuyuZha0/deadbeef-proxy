@@ -58,6 +58,14 @@ public final class HttpRequestUtils {
     }
   }
 
+  public static HttpResponseStatus errorMapping(Throwable cause) {
+    if (cause instanceof TimeoutException
+        || cause instanceof io.netty.handler.timeout.TimeoutException) {
+      return HttpResponseStatus.GATEWAY_TIMEOUT;
+    }
+    return HttpResponseStatus.BAD_GATEWAY;
+  }
+
   public static Handler<Throwable> createErrorHandler(@NonNull HttpServerResponse response) {
     return Utils.atMostOnce(
         (Throwable cause) -> {
@@ -72,10 +80,7 @@ public final class HttpRequestUtils {
             msg = Buffer.buffer(Throwables.getStackTraceAsString(cause), "UTF-8");
           }
           response
-              .setStatusCode(
-                  (cause instanceof TimeoutException)
-                      ? HttpResponseStatus.GATEWAY_TIMEOUT.code()
-                      : HttpResponseStatus.BAD_GATEWAY.code())
+              .setStatusCode(errorMapping(cause).code())
               .putHeader(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.TEXT_PLAIN)
               .putHeader(HttpHeaderNames.CONTENT_LENGTH, Integer.toString(msg.length()))
               .end(msg);

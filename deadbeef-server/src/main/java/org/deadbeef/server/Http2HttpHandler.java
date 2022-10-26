@@ -20,6 +20,7 @@ import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
+import org.deadbeef.streams.PrefixAndAction;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpHeaderDecoder;
@@ -82,29 +83,34 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
                   buildRequestOptions(request),
                   ar -> {
                     if (ar.succeeded()) {
-                      HttpClientRequest clientRequest = ar.result();
-                      clientRequest.exceptionHandler(errorHandler);
-                      prefixAndAction.accept(
-                          clientRequest,
-                          ar1 -> {
-                            clientRequest.end();
-                            if (ar1.succeeded()) {
-                              clientRequest
-                                  .response()
-                                  .onSuccess(
-                                      clientResponse ->
-                                          writeResponse(
-                                              serverResponse, clientResponse, errorHandler))
-                                  .onFailure(errorHandler);
-                            } else {
-                              errorHandler.handle(ar1.cause());
-                            }
-                          });
+                      onRequestSuccess(ar.result(), prefixAndAction, serverResponse, errorHandler);
                     } else {
                       errorHandler.handle(ar.cause());
                     }
                   });
             });
+  }
+
+  private void onRequestSuccess(
+      HttpClientRequest clientRequest,
+      PrefixAndAction<? super HttpClientRequest> prefixAndAction,
+      HttpServerResponse serverResponse,
+      Handler<Throwable> errorHandler) {
+    clientRequest.exceptionHandler(errorHandler);
+    prefixAndAction.accept(
+        clientRequest,
+        ar -> {
+          clientRequest.end();
+          if (ar.succeeded()) {
+            clientRequest
+                .response()
+                .onSuccess(
+                    clientResponse -> writeResponse(serverResponse, clientResponse, errorHandler))
+                .onFailure(errorHandler);
+          } else {
+            errorHandler.handle(ar.cause());
+          }
+        });
   }
 
   private void writeResponse(
