@@ -103,17 +103,28 @@ public class ProxyStreamPrefixVisitorTest {
                   HttpHeaderNames.CONTENT_LENGTH,
                   Integer.toString(prefix.length() + randomData.length()));
               request.write(prefix);
-              vertx.setTimer(30, id -> request.end(randomData));
+              vertx.setTimer(
+                  30,
+                  id -> {
+                    request.write(randomData.getBuffer(0, randomData.length() >> 1));
+                    vertx.setTimer(
+                        50,
+                        id1 ->
+                            request.end(
+                                randomData.getBuffer(
+                                    randomData.length() >> 1, randomData.length())));
+                  });
 
               request
                   .response()
                   .onSuccess(
                       response -> {
-                        response.handler(
-                            buffer -> {
-                              System.out.println("Receive buffer len: " + buffer.length());
-                              System.out.println(response.headers());
-                            });
+                        //                        response.handler(
+                        //                            buffer -> {
+                        //                              System.out.println("Receive buffer len: " +
+                        // buffer.length());
+                        //                              System.out.println(response.headers());
+                        //                            });
                         response
                             .body()
                             .onSuccess(
