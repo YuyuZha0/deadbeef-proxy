@@ -144,7 +144,7 @@ public class ConsoleReporter extends ScheduledReporter {
 
   private String humanReadableBytes(double d) {
     if (d < ONE_KB) {
-      return new DecimalFormat("#.# Byte").format(d);
+      return new DecimalFormat("#.# bytes").format(d);
     }
     if (d < ONE_MB) {
       return new DecimalFormat("#.# KB").format(d / ONE_KB);
