@@ -158,10 +158,11 @@ public class ConsoleReporter extends ScheduledReporter {
     return new DecimalFormat("#.## TB").format(d / ONE_TB);
   }
 
+  // specialized for bytes transferred
   private void printMeter(Meter meter) {
     printIfEnabled(
         MetricAttribute.COUNT,
-        String.format(locale, "             count = %s", humanReadableBytes(meter.getCount())));
+        String.format(locale, "             total = %s", humanReadableBytes(meter.getCount())));
     printIfEnabled(
         MetricAttribute.MEAN_RATE,
         String.format(

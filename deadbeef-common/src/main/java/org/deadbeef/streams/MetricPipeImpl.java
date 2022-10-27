@@ -32,6 +32,28 @@ final class MetricPipeImpl implements Pipe<Buffer> {
     src.exceptionHandler(result::tryFail);
   }
 
+  private static void handleSuccess(
+      Handler<AsyncResult<Void>> completionHandler, WriteStream<Buffer> dst, boolean endOnSuccess) {
+    if (endOnSuccess) {
+      dst.end(completionHandler);
+    } else {
+      completionHandler.handle(Future.succeededFuture());
+    }
+  }
+
+  private static void handleFailure(
+      Throwable cause,
+      Handler<AsyncResult<Void>> completionHandler,
+      WriteStream<Buffer> dst,
+      boolean endOnFailure) {
+    Future<Void> res = Future.failedFuture(cause);
+    if (endOnFailure) {
+      dst.end(ignore -> completionHandler.handle(res));
+    } else {
+      completionHandler.handle(res);
+    }
+  }
+
   @Override
   public synchronized Pipe<Buffer> endOnFailure(boolean end) {
     endOnFailure = end;
@@ -59,11 +81,14 @@ final class MetricPipeImpl implements Pipe<Buffer> {
 
   @Override
   public void to(@NonNull WriteStream<Buffer> ws, Handler<AsyncResult<Void>> completionHandler) {
+    boolean endOnSuccess, endOnFailure;
     synchronized (this) {
       if (dst != null) {
         throw new IllegalStateException();
       }
       dst = ws;
+      endOnSuccess = this.endOnSuccess;
+      endOnFailure = this.endOnFailure;
     }
     Handler<Void> drainHandler = v -> src.resume();
     src.handler(
@@ -82,33 +107,16 @@ final class MetricPipeImpl implements Pipe<Buffer> {
             ar -> {
               Utils.clearHandlers(src);
               if (ar.succeeded()) {
-                handleSuccess(completionHandler);
+                handleSuccess(completionHandler, ws, endOnSuccess);
               } else {
                 Throwable err = ar.cause();
                 if (err instanceof WriteException) {
                   src.resume();
                   err = err.getCause();
                 }
-                handleFailure(err, completionHandler);
+                handleFailure(err, completionHandler, ws, endOnFailure);
               }
             });
-  }
-
-  private void handleSuccess(Handler<AsyncResult<Void>> completionHandler) {
-    if (endOnSuccess) {
-      dst.end(completionHandler);
-    } else {
-      completionHandler.handle(Future.succeededFuture());
-    }
-  }
-
-  private void handleFailure(Throwable cause, Handler<AsyncResult<Void>> completionHandler) {
-    Future<Void> res = Future.failedFuture(cause);
-    if (endOnFailure) {
-      dst.end(ignore -> completionHandler.handle(res));
-    } else {
-      completionHandler.handle(res);
-    }
   }
 
   public void close() {
