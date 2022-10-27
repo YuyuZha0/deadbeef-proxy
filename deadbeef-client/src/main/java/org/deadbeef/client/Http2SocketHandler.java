@@ -1,5 +1,6 @@
 package org.deadbeef.client;
 
+import com.codahale.metrics.MetricRegistry;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -16,10 +17,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.PrefixAndAction;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
+import org.deadbeef.streams.StreamType;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
@@ -41,12 +44,14 @@ public final class Http2SocketHandler implements Handler<HttpServerRequest> {
       @NonNull NetClient netClient,
       @NonNull AddressPicker addressPicker,
       @NonNull ProxyAuthenticationGenerator generator,
-      @NonNull PipeFactory pipeFactory) {
+      @NonNull MetricRegistry metricRegistry) {
     this.netClient = netClient;
     this.addressPicker = addressPicker;
-    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
+    this.proxyStreamPrefixVisitor =
+        new ProxyStreamPrefixVisitor<>(
+            vertx, new MetricPipeFactory(metricRegistry, StreamType.HTTPS_DOWN));
     this.httpsConnectEncoder = new HttpsConnectEncoder(generator);
-    this.pipeFactory = pipeFactory;
+    this.pipeFactory = new MetricPipeFactory(metricRegistry, StreamType.HTTPS_UP);
   }
 
   private void handleSocketConnected(

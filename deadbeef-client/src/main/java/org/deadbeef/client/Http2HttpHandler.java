@@ -1,5 +1,6 @@
 package org.deadbeef.client;
 
+import com.codahale.metrics.MetricRegistry;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -21,9 +22,11 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
+import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
+import org.deadbeef.streams.StreamType;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
@@ -49,12 +52,14 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       @NonNull HttpClient httpClient,
       @NonNull AddressPicker addressPicker,
       @NonNull ProxyAuthenticationGenerator generator,
-      @NonNull PipeFactory pipeFactory) {
-    this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
+      @NonNull MetricRegistry metricRegistry) {
+    this.proxyStreamPrefixVisitor =
+        new ProxyStreamPrefixVisitor<>(
+            vertx, new MetricPipeFactory(metricRegistry, StreamType.HTTP_DOWN));
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
     this.proxyAuthenticationGenerator = generator;
-    this.pipeFactory = pipeFactory;
+    this.pipeFactory = new MetricPipeFactory(metricRegistry, StreamType.HTTP_UP, true, true);
   }
 
   private boolean should100Continue(HttpServerRequest request) {
@@ -115,8 +120,9 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
                 return;
               }
               clientRequest.write(Prefix.serializeToBuffer(proto));
-              serverRequest
-                  .pipeTo(clientRequest)
+              pipeFactory
+                  .newPipe(serverRequest)
+                  .to(clientRequest)
                   .onSuccess(
                       v -> awaitUpperStreamResponse(serverResponse, clientRequest, errorHandler))
                   .onFailure(errorHandler);

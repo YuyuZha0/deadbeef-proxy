@@ -105,10 +105,7 @@ final class MetricPipeImpl implements Pipe<Buffer> {
   private void handleFailure(Throwable cause, Handler<AsyncResult<Void>> completionHandler) {
     Future<Void> res = Future.failedFuture(cause);
     if (endOnFailure) {
-      dst.end(
-          ignore -> {
-            completionHandler.handle(res);
-          });
+      dst.end(ignore -> completionHandler.handle(res));
     } else {
       completionHandler.handle(res);
     }

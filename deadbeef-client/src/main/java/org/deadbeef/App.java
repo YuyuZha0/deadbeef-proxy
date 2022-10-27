@@ -9,7 +9,6 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
-import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
@@ -21,8 +20,6 @@ import org.deadbeef.client.Http2HttpHandler;
 import org.deadbeef.client.Http2SocketHandler;
 import org.deadbeef.client.ProxyClientRequestHandler;
 import org.deadbeef.route.AddressPicker;
-import org.deadbeef.streams.MetricPipeFactory;
-import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.util.ConsoleReporter;
 
 import java.util.concurrent.TimeUnit;
@@ -76,27 +73,18 @@ public final class App extends ProxyVerticle<ClientConfig> {
             getOptionsOrDefault(getConfig().getHttpServerOptions(), HttpServerOptions::new));
   }
 
-  private void startReporter() {
-    VertxInternal vertxInternal = (VertxInternal) getVertx();
+  private ConsoleReporter startReporter() {
     // hack for human friendly bytes
     ConsoleReporter consoleReporter =
         ConsoleReporter.forRegistry(metricRegistry)
             .convertDurationsTo(TimeUnit.MINUTES)
             .convertRatesTo(TimeUnit.SECONDS)
-            .scheduleOn(vertxInternal.nettyEventLoopGroup().next())
+            .scheduleOn(getVertx().nettyEventLoopGroup().next())
             .shutdownExecutorOnStop(false)
             .build();
-    vertxInternal.addCloseHook(
-        promise -> {
-          try {
-            consoleReporter.stop();
-            promise.tryComplete();
-          } catch (Exception e) {
-            promise.tryFail(e);
-          }
-        });
     consoleReporter.start(1, 5, TimeUnit.MINUTES);
     log.info("Console reporter started.");
+    return consoleReporter;
   }
 
   @Override
@@ -107,7 +95,6 @@ public final class App extends ProxyVerticle<ClientConfig> {
     HttpClient httpClient = createHttpClient();
     NetClient netClient = createNetClient();
     HttpServer server = createHttpServer();
-    PipeFactory pipeFactory = new MetricPipeFactory(metricRegistry);
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new Http2HttpHandler(
@@ -115,13 +102,13 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 httpClient,
                 AddressPicker.ofStatic(config.getHttpPort(), config.getRemoteHost()),
                 proxyAuthenticationGenerator,
-                pipeFactory),
+                metricRegistry),
             new Http2SocketHandler(
                 getVertx(),
                 netClient,
                 AddressPicker.ofStatic(config.getHttpsPort(), config.getRemoteHost()),
                 proxyAuthenticationGenerator,
-                pipeFactory));
+                metricRegistry));
     server.requestHandler(requestHandler);
 
     registerCloseHook(server::close);
@@ -138,6 +125,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
             startPromise.tryFail(result.cause());
           }
         });
-    startReporter();
+    ConsoleReporter consoleReporter = startReporter();
+    registerCloseHookSync(consoleReporter::close);
   }
 }

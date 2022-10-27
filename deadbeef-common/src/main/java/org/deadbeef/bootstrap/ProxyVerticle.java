@@ -5,7 +5,6 @@ import com.google.common.collect.ImmutableList;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
-import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.net.TCPSSLOptions;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -30,8 +29,21 @@ public abstract class ProxyVerticle<C extends ProxyConfig> extends AbstractVerti
 
   protected void registerCloseHook(Supplier<Future<Void>> action) {
     if (action != null) {
-      ContextInternal context = (ContextInternal) super.context;
-      context.execute(action, closeHooks::add);
+      context.runOnContext(v -> closeHooks.add(action));
+    }
+  }
+
+  protected void registerCloseHookSync(Runnable r) {
+    if (r != null) {
+      registerCloseHook(
+          () -> {
+            try {
+              r.run();
+              return Future.succeededFuture();
+            } catch (Throwable cause) {
+              return Future.failedFuture(cause);
+            }
+          });
     }
   }
 
@@ -53,6 +65,7 @@ public abstract class ProxyVerticle<C extends ProxyConfig> extends AbstractVerti
     context.runOnContext(
         v -> {
           if (closeHooks.isEmpty()) {
+            stopPromise.tryComplete();
             return;
           }
           List<Supplier<Future<Void>>> copy = ImmutableList.copyOf(closeHooks);
