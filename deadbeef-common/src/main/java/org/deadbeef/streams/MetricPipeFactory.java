@@ -1,5 +1,7 @@
 package org.deadbeef.streams;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.CaseFormat;
 import io.vertx.core.buffer.Buffer;
@@ -9,9 +11,10 @@ import lombok.NonNull;
 
 public final class MetricPipeFactory implements PipeFactory {
 
-  private final MetricRegistry metricRegistry;
+  private final Counter counter;
 
-  private final String name;
+  private final Meter meter;
+
   private final boolean endOnSuccess;
   private final boolean endOnFailure;
 
@@ -20,8 +23,9 @@ public final class MetricPipeFactory implements PipeFactory {
       @NonNull StreamType streamType,
       boolean endOnSuccess,
       boolean endOnFailure) {
-    this.metricRegistry = metricRegistry;
-    this.name = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, streamType.name());
+    String name = CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, streamType.name());
+    this.counter = metricRegistry.counter(name.concat("[NewPipeCnt]"));
+    this.meter = metricRegistry.meter(name.concat("[BytesRead]"));
     this.endOnSuccess = endOnSuccess;
     this.endOnFailure = endOnFailure;
   }
@@ -32,9 +36,7 @@ public final class MetricPipeFactory implements PipeFactory {
 
   @Override
   public Pipe<Buffer> newPipe(@NonNull ReadStream<Buffer> src) {
-    metricRegistry.counter(name.concat("[NewPipeCnt]")).inc();
-    return new MetricPipeImpl(src, metricRegistry.meter(name.concat("[BytesRead]")))
-        .endOnSuccess(endOnSuccess)
-        .endOnFailure(endOnFailure);
+    counter.inc();
+    return new MetricPipeImpl(src, meter).endOnSuccess(endOnSuccess).endOnFailure(endOnFailure);
   }
 }
