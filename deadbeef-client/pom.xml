@@ -62,6 +62,10 @@
         <profile>
             <id>linux</id>
             <activation>
+                <property>
+                    <name>withNativeDependency</name>
+                    <value>true</value>
+                </property>
                 <os>
                     <family>unix</family>
                     <name>Linux</name>
@@ -75,10 +79,17 @@
                     <classifier>${os.detected.classifier}</classifier>
                 </dependency>
             </dependencies>
+            <build>
+                <finalName>deadbeef-client-${revision}-${os.detected.classifier}</finalName>
+            </build>
         </profile>
         <profile>
             <id>mac</id>
             <activation>
+                <property>
+                    <name>withNativeDependency</name>
+                    <value>true</value>
+                </property>
                 <os>
                     <family>mac</family>
                 </os>
@@ -97,6 +108,9 @@
                     <classifier>${os.detected.classifier}</classifier>
                 </dependency>
             </dependencies>
+            <build>
+                <finalName>deadbeef-client-${revision}-${os.detected.classifier}</finalName>
+            </build>
         </profile>
     </profiles>
 

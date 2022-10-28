@@ -17,22 +17,37 @@ Vertx http proxy, for some reason I can't talk much.
 
 ### System Requirements
 
-`java(jdk/jre) >= 11`
+`java(jdk/jre) >= 8`
 
 **If you want to compile the project yourself, you may need `maven`(version of `3.6.3` is preferred)**
+Compile the source codes with the following command:
+
+```bash
+mvn clean package -DwithNativeDependency=true
+```
 
 The project contains some platform dependent components, it is recommended for you to compile the code on you device to
 gain better performance.
+
+Or if you are not so familiar with Java, just use the released jar, there should not be significant difference.
 
 ### Usage
 
 #### Local
 
 Start a deamon process listening on a port with the following command:
+For java8:
 
 ```bash
-java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-client/target/deadbeef-client-1.0-SNAPSHOT.jar --config client-config.yaml
+java -jar deadbeef-client/target/deadbeef-client-${version}[-${os.detected.classifier}].jar --config client-config.yaml
 ```
+
+Java9 or later:
+
+```bash
+java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-client/target/deadbeef-client-${version}[-${os.detected.classifier}].jar --config client-config.yaml
+```
+
 *No doubt that you could custom as many JVM options as you like*
 
 Here is the `client-config.yaml` example:
@@ -59,7 +74,7 @@ You may start with the following command:
 
 ```bash
 #!/bin/bash
-nohup java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-server/target/deadbeef-server-1.0-SNAPSHOT.jar -c server-config.yaml > run.log 2>&1 & echo $! > pid.file
+nohup java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-server/target/deadbeef-server-${version}[-${os.detected.classifier}].jar -c server-config.yaml > run.log 2>&1 & echo $! > pid.file
 ```
 
 Here is what `server-config.yaml` should be like:

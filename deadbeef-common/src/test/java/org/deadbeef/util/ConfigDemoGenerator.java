@@ -2,6 +2,8 @@ package org.deadbeef.util;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
@@ -11,8 +13,6 @@ import lombok.SneakyThrows;
 import org.junit.Test;
 
 import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
 public class ConfigDemoGenerator {
 
@@ -42,9 +42,9 @@ public class ConfigDemoGenerator {
     object.put("httpsPort", 14484);
     object.put(
         "auth",
-        List.of(
-            Map.of("secretId", "one-secret-id", "secretKey", "one-secret-key"),
-            Map.of("secretId", "another-secret-id", "secretKey", "another-secret-key")));
+        Lists.newArrayList(
+            ImmutableMap.of("secretId", "one-secret-id", "secretKey", "one-secret-key"),
+            ImmutableMap.of("secretId", "another-secret-id", "secretKey", "another-secret-key")));
     object.put("preferNativeTransport", true);
     object.put("addressResolver", Arrays.asList("8.8.8.8", "114.114.114.114"));
     object.put("httpClient", new HttpClientOptions());
