@@ -33,22 +33,23 @@ Start a deamon process listening on a port with the following command:
 ```bash
 java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-client/target/deadbeef-client-1.0-SNAPSHOT.jar --config client-config.yaml
 ```
+*No doubt that you could custom as many JVM options as you like*
 
 Here is the `client-config.yaml` example:
 
 ```yaml
-httpPort: 14483
-httpsPort: 14484
-remoteServer: example.com
+httpPort: 14483 # the http port of remote server
+httpsPort: 14484 # the https port of remote server
+remoteServer: example.com # the remote server address, ipv6 address is supported if your machine has access to ipv6 network
 localPort: 14482 # this is the local port that you could configure your browser proxy to
 secretId: a-secret-id
 secretKey: a-secret-key
 # options below are optional
 preferNativeTransport: true
-addressResolver: [ 8.8.8.8, 114.114.114.114 ]
+addressResolver: [ 8.8.8.8, 114.114.114.114 ] # custom dns hosts, you may just keep it empty
 ```
 
-### Remote
+#### Remote
 
 Start a deamon process on your remote machine to handle requests from you local proxy server.
 
@@ -66,7 +67,7 @@ Here is what `server-config.yaml` should be like:
 ```yaml
 httpPort: 14483
 httpsPort: 14484
-auth:
+auth: # authentication key pairs, one secretId might have multiple secretKeys
   - { secretKey: one-secret-key, secretId: one-secret-id }
   - { secretKey: another-secret-key, secretId: another-secret-id }
 preferNativeTransport: true
