@@ -3,6 +3,7 @@ package org.deadbeef.streams;
 import com.google.common.base.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import io.netty.buffer.Unpooled;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -67,10 +68,9 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
                             whenWritingFinished.handle(Future.failedFuture(cause));
                           }
                         });
-            // TODO some case PrefixBuffer.release() may not called!
             handler.handle(Future.succeededFuture(new PrefixAndAction<>(prefix, action)));
           } else {
-            prefixBuffer.release();
+            Utils.clearHandlers(src);
             handler.handle(Future.failedFuture(ar.cause()));
           }
         });
@@ -83,12 +83,12 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       Handler<AsyncResult<Void>> handler) {
 
     Buffer remaining = prefixBuffer.readRemaining();
-    prefixBuffer.release();
-    if (remaining == null && prefixBuffer.isStreamEnded()) {
+    Utils.clearHandlers(src);
+    if (remaining.length() == 0 && prefixBuffer.isStreamEnded()) {
       handler.handle(Future.succeededFuture());
       return;
     }
-    if (remaining == null) {
+    if (remaining.length() == 0) {
       Pipe<Buffer> pipe = pipeFactory.newPipe(src);
       pipe.to(dst, handler);
       src.resume();
@@ -111,6 +111,8 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
   }
 
   private static final class PrefixBuffer implements Handler<Buffer> {
+
+    private static final Buffer EMPTY_BUFFER = Buffer.buffer(Unpooled.EMPTY_BUFFER);
 
     private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
     private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.heapBuffer(0xff);
@@ -204,22 +206,14 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
     Buffer readRemaining() {
       int remainingBytes = tempBuf.readableBytes();
-      if (remainingBytes > 0) {
-        if (log.isDebugEnabled()) {
-          log.debug("Read remaining bytes, length={}", remainingBytes);
-        }
-        return Buffer.buffer(tempBuf.readBytes(remainingBytes));
-      }
-      return null;
-    }
-
-    void release() {
       if (log.isDebugEnabled()) {
-        log.debug("Release temporary ByteBuf: {}", tempBuf);
+        log.debug("Read remaining bytes, length={}", remainingBytes);
       }
-      Utils.clearHandlers(src);
-      tempBuf.clear();
-      // ReferenceCountUtil.release(tempBuf);
+      if (remainingBytes > 0) {
+        return Buffer.buffer(tempBuf.readBytes(remainingBytes));
+      } else {
+        return EMPTY_BUFFER;
+      }
     }
   }
 }

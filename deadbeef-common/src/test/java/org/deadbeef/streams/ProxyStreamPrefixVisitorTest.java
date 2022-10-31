@@ -61,7 +61,7 @@ public class ProxyStreamPrefixVisitorTest {
                     try {
                       System.out.println(HttpProto.Request.parseFrom(prefix.getBytes()));
                     } catch (InvalidProtocolBufferException e) {
-                      throw new RuntimeException(e);
+                      testContext.fail(e);
                     }
                     HttpServerResponse response = request.response();
                     String contentLen = request.getHeader(HttpHeaderNames.CONTENT_LENGTH);

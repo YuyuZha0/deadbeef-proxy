@@ -3,6 +3,8 @@ package org.deadbeef.streams;
 import com.google.protobuf.GeneratedMessageV3;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
+import io.netty.util.ReferenceCountUtil;
+import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.buffer.impl.VertxByteBufAllocator;
 
@@ -14,11 +16,11 @@ public final class Prefix {
   static final int MAGIC = 0xDEADBEEF;
 
   private Prefix() {
-    throw new UnsupportedOperationException();
+    throw new IllegalStateException();
   }
 
   private static ByteBuf newByteBuf(int size) {
-    return VertxByteBufAllocator.DEFAULT.heapBuffer(size);
+    return VertxByteBufAllocator.DEFAULT.buffer(size);
   }
 
   public static Buffer serializeToBuffer(byte[] data) {
@@ -37,7 +39,8 @@ public final class Prefix {
     try (ByteBufOutputStream outputStream = new ByteBufOutputStream(byteBuf)) {
       data.writeTo(outputStream);
     } catch (IOException e) {
-      throw new RuntimeException(e);
+      ReferenceCountUtil.release(byteBuf);
+      throw new VertxException(e);
     }
     return Buffer.buffer(byteBuf);
   }
