@@ -1,11 +1,14 @@
 package org.deadbeef.auth;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
 import com.google.protobuf.ByteString;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.deadbeef.protocol.HttpProto;
 import org.junit.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
@@ -172,5 +175,90 @@ public class ProxyAuthenticationValidatorTest {
     } catch (IllegalArgumentException expected) {
       assertEquals("empty secretKey for secretId: my-id", expected.getMessage());
     }
+  }
+
+  // ---- replay protection ----
+
+  @Test
+  public void rejectsReplayedAuthPayload() {
+    ProxyAuthenticationGenerator gen = new ProxyAuthenticationGenerator("id", "key");
+    ProxyAuthenticationValidator validator = ProxyAuthenticationValidator.simple("id", "key");
+    HttpProto.ProxyAuthentication auth = gen.get();
+
+    assertTrue("first use should be accepted", validator.test(auth));
+    assertFalse("second use of same nonce should be rejected", validator.test(auth));
+    assertFalse("third use also rejected", validator.test(auth));
+  }
+
+  @Test
+  public void rejectsReplayedAuthString() {
+    ProxyAuthenticationGenerator gen = new ProxyAuthenticationGenerator("id", "key");
+    ProxyAuthenticationValidator validator = ProxyAuthenticationValidator.simple("id", "key");
+    String token = gen.getString();
+
+    assertTrue(validator.testString(token));
+    assertFalse(validator.testString(token));
+  }
+
+  @Test
+  public void distinctNoncesUnderSameSecretAllAccepted() {
+    ProxyAuthenticationGenerator gen = new ProxyAuthenticationGenerator("id", "key");
+    ProxyAuthenticationValidator validator = ProxyAuthenticationValidator.simple("id", "key");
+
+    for (int i = 0; i < 20; i++) {
+      // gen.get() produces a fresh nonce each time
+      assertTrue("call " + i, validator.test(gen.get()));
+    }
+  }
+
+  @Test
+  public void nonceCacheScopedPerSecretId() {
+    // Forge two auth payloads sharing the same nonce + timestamp but under different
+    // secretIds. The cache must key on (secretId, nonce); accepting both proves scoping.
+    byte[] nonce = new byte[16];
+    java.util.Arrays.fill(nonce, (byte) 0xAB);
+    long ts = System.currentTimeMillis();
+
+    HashFunction hf1 = Hashing.hmacSha256("key-1".getBytes(StandardCharsets.UTF_8));
+    HashFunction hf2 = Hashing.hmacSha256("key-2".getBytes(StandardCharsets.UTF_8));
+
+    HttpProto.ProxyAuthentication auth1 =
+        HttpProto.ProxyAuthentication.newBuilder()
+            .setSecretId("id-1")
+            .setTimestamp(ts)
+            .setNonce(ByteString.copyFrom(nonce))
+            .setSignature(
+                ByteString.copyFrom(
+                    ProxyAuthenticationGenerator.signature("id-1", ts, nonce, hf1)))
+            .build();
+    HttpProto.ProxyAuthentication auth2 =
+        HttpProto.ProxyAuthentication.newBuilder()
+            .setSecretId("id-2")
+            .setTimestamp(ts)
+            .setNonce(ByteString.copyFrom(nonce))
+            .setSignature(
+                ByteString.copyFrom(
+                    ProxyAuthenticationGenerator.signature("id-2", ts, nonce, hf2)))
+            .build();
+
+    ProxyAuthenticationValidator validator =
+        ProxyAuthenticationValidator.fromMap(ImmutableMap.of("id-1", "key-1", "id-2", "key-2"));
+
+    assertTrue(validator.test(auth1));
+    assertTrue(validator.test(auth2));
+    // But replaying either is still blocked.
+    assertFalse(validator.test(auth1));
+    assertFalse(validator.test(auth2));
+  }
+
+  @Test
+  public void nonceCacheIsPerValidatorInstance() {
+    // Two independent validators must have independent caches.
+    HttpProto.ProxyAuthentication auth =
+        new ProxyAuthenticationGenerator("id", "key").get();
+
+    assertTrue(ProxyAuthenticationValidator.simple("id", "key").test(auth));
+    // Same auth, fresh validator → should still be accepted.
+    assertTrue(ProxyAuthenticationValidator.simple("id", "key").test(auth));
   }
 }

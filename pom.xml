@@ -34,6 +34,7 @@
         <lang3.version>3.17.0</lang3.version>
         <revision>1.0.0</revision>
         <metrics.version>4.2.30</metrics.version>
+        <caffeine.version>3.2.3</caffeine.version>
     </properties>
 
     <dependencyManagement>
@@ -164,6 +165,11 @@
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
                 <version>${metrics.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

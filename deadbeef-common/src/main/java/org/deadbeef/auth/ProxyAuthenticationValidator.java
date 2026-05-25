@@ -1,5 +1,6 @@
 package org.deadbeef.auth;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ListMultimap;
@@ -7,21 +8,28 @@ import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.protocol.HttpProto;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Predicate;
-
 public final class ProxyAuthenticationValidator
     implements Predicate<HttpProto.ProxyAuthentication> {
 
-  private static final long MAX_TIME_DELTA = TimeUnit.MINUTES.toMillis(15);
+  private static final long MAX_TIME_DELTA = TimeUnit.MINUTES.toMillis(10);
+  private final ConcurrentMap<NonceKey, Boolean> nonceCache =
+      Caffeine.newBuilder()
+          .expireAfterWrite(2 * MAX_TIME_DELTA + (MAX_TIME_DELTA >> 1), TimeUnit.MILLISECONDS)
+          .maximumSize(1L << 20)
+          .<NonceKey, Boolean>build()
+          .asMap();
   private final ListMultimap<String, HashFunction> storedMap;
 
   private ProxyAuthenticationValidator(ListMultimap<String, HashFunction> storedMap) {
@@ -71,6 +79,10 @@ public final class ProxyAuthenticationValidator
     return test(proxyAuthentication);
   }
 
+  private boolean isNonceNeverSeen(String secretId, byte[] nonce) {
+    return nonceCache.putIfAbsent(new NonceKey(secretId, nonce), Boolean.TRUE) == null;
+  }
+
   @Override
   public boolean test(HttpProto.ProxyAuthentication proxyAuthentication) {
     if (proxyAuthentication == null) {
@@ -88,25 +100,52 @@ public final class ProxyAuthenticationValidator
         || StringUtils.isEmpty(secretId = proxyAuthentication.getSecretId())) {
       return false;
     }
+
     if (!proxyAuthentication.hasNonce() || proxyAuthentication.getNonce().isEmpty()) {
       return false;
     }
-    byte[] nonce = proxyAuthentication.getNonce().toByteArray();
     if (!proxyAuthentication.hasSignature() || proxyAuthentication.getSignature().isEmpty()) {
       return false;
     }
+    byte[] nonce = proxyAuthentication.getNonce().toByteArray();
     byte[] signature = proxyAuthentication.getSignature().toByteArray();
     List<HashFunction> hashFunctions = storedMap.get(secretId);
     if (hashFunctions.isEmpty()) {
       return false;
     }
     for (HashFunction function : hashFunctions) {
-      if (Arrays.equals(
+      if (MessageDigest.isEqual(
           signature,
           ProxyAuthenticationGenerator.signature(secretId, timestamp, nonce, function))) {
-        return true;
+        return isNonceNeverSeen(secretId, nonce);
       }
     }
     return false;
+  }
+
+  private static final class NonceKey {
+    private final String secretId;
+    private final byte[] nonce;
+
+    NonceKey(String secretId, byte[] nonce) {
+      this.secretId = secretId;
+      this.nonce = nonce;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof NonceKey that)) {
+        return false;
+      }
+      return secretId.equals(that.secretId) && Arrays.equals(nonce, that.nonce);
+    }
+
+    @Override
+    public int hashCode() {
+      return secretId.hashCode() * 31 + Arrays.hashCode(nonce);
+    }
   }
 }
