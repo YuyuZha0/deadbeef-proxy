@@ -67,7 +67,7 @@ public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
     DefaultPipeFactory pipeFactory = new DefaultPipeFactory();
 
     Handler<HttpServerRequest> proxyHandler =
-        new Http2HttpHandler(getVertx(), httpClient, validator, pipeFactory);
+        new HttpProxyHandler(getVertx(), httpClient, validator, pipeFactory);
     Handler<HttpServerRequest> connectHandler =
         new ServerConnectHandler(netClient, validator, pipeFactory);
 

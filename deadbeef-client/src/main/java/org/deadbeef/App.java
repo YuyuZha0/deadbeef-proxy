@@ -14,7 +14,7 @@ import org.deadbeef.bootstrap.Bootstrap;
 import org.deadbeef.bootstrap.ProxyVerticle;
 import org.deadbeef.client.ClientConfig;
 import org.deadbeef.client.ConnectTunnelHandler;
-import org.deadbeef.client.Http2HttpHandler;
+import org.deadbeef.client.HttpProxyHandler;
 import org.deadbeef.client.ProxyClientRequestHandler;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.route.AddressPicker;
@@ -81,7 +81,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
     AddressPicker remotePicker = AddressPicker.ofStatic(config.getHttpPort(), config.getRemoteHost());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
-            new Http2HttpHandler(
+            new HttpProxyHandler(
                 getVertx(), httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry),
             new ConnectTunnelHandler(
                 httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry));

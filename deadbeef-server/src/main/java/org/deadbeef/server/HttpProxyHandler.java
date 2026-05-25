@@ -29,7 +29,7 @@ import org.deadbeef.util.HttpRequestUtils;
 import java.io.IOException;
 
 @Slf4j
-public final class Http2HttpHandler implements Handler<HttpServerRequest> {
+public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
   private final HttpClientResponseEncoder encoder = new HttpClientResponseEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
@@ -39,7 +39,7 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
 
   private final ProxyAuthenticationValidator proxyAuthenticationValidator;
 
-  public Http2HttpHandler(
+  public HttpProxyHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
       @NonNull ProxyAuthenticationValidator validator,

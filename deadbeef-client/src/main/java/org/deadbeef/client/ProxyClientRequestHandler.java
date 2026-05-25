@@ -10,11 +10,11 @@ import org.deadbeef.util.HttpRequestUtils;
 @Slf4j
 public final class ProxyClientRequestHandler implements Handler<HttpServerRequest> {
 
-  private final Http2HttpHandler httpHandler;
+  private final HttpProxyHandler httpHandler;
   private final ConnectTunnelHandler httpsHandler;
 
   public ProxyClientRequestHandler(
-      @NonNull Http2HttpHandler httpHandler, @NonNull ConnectTunnelHandler httpsHandler) {
+      @NonNull HttpProxyHandler httpHandler, @NonNull ConnectTunnelHandler httpsHandler) {
     this.httpHandler = httpHandler;
     this.httpsHandler = httpsHandler;
   }
