@@ -23,7 +23,7 @@ public class ConstantsTest {
   public void authHeaderName() {
     CharSequence name = Constants.authHeaderName();
     assertNotNull(name);
-    assertEquals("X-Deadbeaf-Auth", name.toString());
+    assertEquals("X-Deadbeef-Auth", name.toString());
   }
 
   @Test

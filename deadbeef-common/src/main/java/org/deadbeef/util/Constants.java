@@ -6,7 +6,7 @@ import java.util.concurrent.TimeUnit;
 
 public final class Constants {
 
-  private static final AsciiString AUTH_HEADER_NAME = AsciiString.cached("X-Deadbeaf-Auth");
+  private static final AsciiString AUTH_HEADER_NAME = AsciiString.cached("X-Deadbeef-Auth");
   private static final int REQUEST_TIMEOUT = (int) TimeUnit.SECONDS.toMillis(20);
 
   private Constants() {
