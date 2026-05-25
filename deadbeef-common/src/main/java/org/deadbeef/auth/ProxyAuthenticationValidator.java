@@ -31,7 +31,7 @@ public final class ProxyAuthenticationValidator
   public static ProxyAuthenticationValidator simple(String secretId, String secretKey) {
     Preconditions.checkArgument(StringUtils.isNotEmpty(secretId), "empty secretId!");
     Preconditions.checkArgument(
-        StringUtils.isNotEmpty(secretKey), "empty secretKey for secretId: %s", secretKey);
+        StringUtils.isNotEmpty(secretKey), "empty secretKey for secretId: %s", secretId);
     return new ProxyAuthenticationValidator(
         ImmutableListMultimap.of(
             secretId, Hashing.hmacSha256(secretKey.getBytes(StandardCharsets.UTF_8))));
@@ -48,7 +48,7 @@ public final class ProxyAuthenticationValidator
       Preconditions.checkArgument(StringUtils.isNotEmpty(entry.getKey()), "empty secretId!");
       Preconditions.checkArgument(
           StringUtils.isNotEmpty(entry.getValue()),
-          "empty secretId for secretKey: %s",
+          "empty secretKey for secretId: %s",
           entry.getKey());
       builder.put(
           entry.getKey(), Hashing.hmacSha256(entry.getValue().getBytes(StandardCharsets.UTF_8)));

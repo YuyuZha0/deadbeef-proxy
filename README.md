@@ -9,82 +9,112 @@
   \ \  \_\\ \ \  \_|\ \ \  \ \  \ \  \_\\ \ \  \|\  \ \  \_|\ \ \  \_|\ \ \  \_|
    \ \_______\ \_______\ \__\ \__\ \_______\ \_______\ \_______\ \_______\ \__\ 
     \|_______|\|_______|\|__|\|__|\|_______|\|_______|\|_______|\|_______|\|__| 
-                                                                                
-                                                                                                                                                       
+                                                                                                                                                                                       
 ```
 
-Vertx http proxy, for some reason I can't talk much.
+A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing between a local client and a remote server.
 
-### System Requirements
+## Architecture
 
-`java(jdk/jre) >= 8`
+`deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over two ports — one for HTTP traffic and one for HTTPS-CONNECT tunnels — using a Protobuf-framed wire format prefixed with the magic `0xDEADBEEF`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
 
-**If you want to compile the project yourself, you may need `maven`(version of `3.6.3` is preferred)**
-Compile the source codes with the following command:
+## System Requirements
+
+- **JDK 21** (or newer)
+- **Maven 3.9+** to build (older Maven versions cannot fully drive the JDK 21 toolchain)
+
+## Building
+
+Compile and package both modules from the project root:
 
 ```bash
 mvn clean package -DwithNativeDependency=true
 ```
 
-The project contains some platform dependent components, it is recommended for you to compile the code on you device to
-gain better performance.
+The shaded fat-jars land in `deadbeef-client/target/` and `deadbeef-server/target/`. The `withNativeDependency=true` profile pulls in the platform-specific Netty native libraries — recommended for best performance.
 
-Or if you are not so familiar with Java, just use the released jar, there should not be significant difference.
-
-### Usage
-
-#### Local
-
-Start a deamon process listening on a port with the following command:
-For java8:
+## Testing
 
 ```bash
-java -jar deadbeef-client/target/deadbeef-client-${version}[-${os.detected.classifier}].jar --config client-config.yaml
+mvn -B verify
 ```
 
-Java9 or later:
+## Usage
+
+### Client (local)
+
+Run the client on the machine you want to proxy traffic from. It opens a single port (`localPort`) that any HTTP client can use as a forward proxy.
 
 ```bash
-java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-client/target/deadbeef-client-${version}[-${os.detected.classifier}].jar --config client-config.yaml
+java \
+  --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
+  -Dio.netty.tryReflectionSetAccessible=true \
+  -jar deadbeef-client/target/deadbeef-client-${version}[-${os.detected.classifier}].jar \
+  --config client-config.yaml
 ```
 
-*No doubt that you could custom as many JVM options as you like*
+> The `--add-opens` and `-Dio.netty.tryReflectionSetAccessible` flags let Netty use its fast direct-memory paths on JDK 21. They are not strictly required, but skipping them prints warnings and may slightly degrade throughput.
 
-Here is the `client-config.yaml` example:
+Example `client-config.yaml`:
 
 ```yaml
-httpPort: 14483 # the http port of remote server
-httpsPort: 14484 # the https port of remote server
-remoteServer: example.com # the remote server address, ipv6 address is supported if your machine has access to ipv6 network
-localPort: 14482 # this is the local port that you could configure your browser proxy to
-secretId: a-secret-id
-secretKey: a-secret-key
-# options below are optional
+# Required
+remoteHost: example.com   # remote server hostname or IP (IPv6 is fine)
+httpPort: 14483           # remote server's HTTP port
+httpsPort: 14484          # remote server's HTTPS port
+localPort: 14482          # local proxy port (point your browser here)
+secretId: an-id           # must match a (secretId, secretKey) pair on the server
+secretKey: a-key
+
+# Optional
 preferNativeTransport: true
-addressResolver: [ 8.8.8.8, 114.114.114.114 ] # custom dns hosts, you may just keep it empty
+addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver
+# httpClient:    {...}    # passthrough to io.vertx.core.http.HttpClientOptions
+# netClient:     {...}    # passthrough to io.vertx.core.net.NetClientOptions
+# localServer:   {...}    # passthrough to io.vertx.core.http.HttpServerOptions
 ```
 
-#### Remote
+### Server (remote)
 
-Start a deamon process on your remote machine to handle requests from you local proxy server.
-
-**Note: `deadbeef-server` handles HTTP/HTTPS on different ports, configure your firewall properly**
-
-You may start with the following command:
+Run the server on the remote host. Open the two listening ports (`httpPort`, `httpsPort`) in your firewall.
 
 ```bash
-#!/bin/bash
-nohup java --add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true -jar deadbeef-server/target/deadbeef-server-${version}[-${os.detected.classifier}].jar -c server-config.yaml > run.log 2>&1 & echo $! > pid.file
+nohup java \
+  --add-opens java.base/jdk.internal.misc=ALL-UNNAMED \
+  -Dio.netty.tryReflectionSetAccessible=true \
+  -jar deadbeef-server/target/deadbeef-server-${version}[-${os.detected.classifier}].jar \
+  -c server-config.yaml \
+  > run.log 2>&1 &
+echo $! > pid.file
 ```
 
-Here is what `server-config.yaml` should be like:
+Example `server-config.yaml`:
 
 ```yaml
+# Required
 httpPort: 14483
 httpsPort: 14484
-auth: # authentication key pairs, one secretId might have multiple secretKeys
-  - { secretKey: one-secret-key, secretId: one-secret-id }
-  - { secretKey: another-secret-key, secretId: another-secret-id }
+auth:
+  # one server can recognize many (secretId, secretKey) pairs;
+  # the same secretId may appear multiple times to support key rotation
+  - { secretId: one-secret-id,     secretKey: one-secret-key }
+  - { secretId: another-secret-id, secretKey: another-secret-key }
+
+# Optional
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]
+# httpClient:  {...}     # HttpClientOptions
+# httpServer:  {...}     # HttpServerOptions
+# netClient:   {...}     # NetClientOptions
+# netServer:   {...}     # NetServerOptions
 ```
+
+## Configuration reference
+
+The `httpClient`, `httpServer`, `netClient`, `netServer`, and `localServer` blocks deserialize directly into their Vert.x option types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class can be set there — TLS, write queue sizing, connect timeouts, etc.
+
+Auth-window tolerance is 15 minutes on either side of the server's wall clock; keep the two hosts loosely time-synchronized.
+
+## License
+
+See [LICENSE.md](LICENSE.md).
