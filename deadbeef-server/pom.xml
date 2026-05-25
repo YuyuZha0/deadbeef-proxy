@@ -109,6 +109,26 @@
                 <finalName>deadbeef-server-${revision}-${os.detected.classifier}</finalName>
             </build>
         </profile>
+        <profile>
+            <id>macos-native-dns</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <dependencies>
+                <!-- Suppresses "Can not find io.netty.resolver.dns.macos.MacOSDnsServerAddressStreamProvider"
+                     by giving Netty the macOS-native resolver. Active on every Mac build,
+                     not gated on `withNativeDependency`. Lives in the server module because that's
+                     where async upstream DNS resolution actually happens. -->
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-resolver-dns-native-macos</artifactId>
+                    <version>${netty.version}</version>
+                    <classifier>${os.detected.classifier}</classifier>
+                </dependency>
+            </dependencies>
+        </profile>
     </profiles>
 
     <build>

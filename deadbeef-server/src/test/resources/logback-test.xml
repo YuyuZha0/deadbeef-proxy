@@ -9,6 +9,10 @@
         </encoder>
     </appender>
 
+    <!-- Drop Vert.x's "Connection was closed" ERROR — it fires on every normal non-2xx
+         response close and adds no diagnostic value. -->
+    <logger name="io.vertx.core.http.impl.HttpClientRequestImpl" level="OFF"/>
+
     <root level="debug">
         <appender-ref ref="STDOUT"/>
     </root>

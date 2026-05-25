@@ -18,7 +18,15 @@ A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing betwe
 
 `deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over a **single port**: HTTP-proxy traffic is sent as a `POST` whose body carries a Protobuf-framed envelope prefixed with the magic `0xDEADBEEF`, while HTTPS tunnels use **standard HTTP CONNECT** upgraded to raw TCP via Vert.x's `HttpServerRequest.toNetSocket(...)`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp, carried uniformly in the `X-Deadbeef-Auth` header; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
 
-> **Migration note**: an earlier release used two separate ports (a `NetServer` on `httpsPort` for a bespoke protobuf-prefixed CONNECT protocol). The CONNECT path now uses standard HTTP CONNECT on the same port as the HTTP-proxy flow, so client and server must be rolled together — mixed versions are wire-incompatible.
+### Security defenses (server-side)
+
+- **HMAC-SHA256 authentication** with constant-time signature comparison (`MessageDigest.isEqual`).
+- **Replay rejection**: every `(secretId, nonce)` pair is single-use within the auth window. Captured tokens cannot be replayed; the Caffeine-backed nonce cache is sized at 2¹⁸ entries with TTL = 2.5× the auth window.
+- **SSRF filter** (`org.deadbeef.security.UpstreamAddressFilter`): the server resolves the upstream host via Vert.x's configured `addressResolver:` chain, then rejects loopback, link-local (incl. cloud-metadata `169.254.169.254`), RFC1918, multicast, unspecified, and IPv4 broadcast destinations before opening any TCP connection. Returns `403 Forbidden`. Configurable per category via the filter's builder; v2.0 ships with the strict default.
+
+> **Migration notes**:
+>
+> - **v1.x → v2.0** is wire-incompatible. The HTTPS tunnel protocol switched from a bespoke `NetServer`-on-`httpsPort` framing to standard HTTP CONNECT on the same port as the HTTP-proxy flow; the auth header was renamed `X-Deadbeaf-Auth` → `X-Deadbeef-Auth`. Roll client and server together.
 
 ## System Requirements
 
@@ -111,7 +119,7 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]
 
 The `httpClient`, `httpServer`, `netClient`, and `localServer` blocks deserialize directly into their Vert.x option types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class can be set there — TLS, write queue sizing, connect timeouts, etc.
 
-Auth-window tolerance is 15 minutes on either side of the server's wall clock; keep the two hosts loosely time-synchronized.
+Auth-window tolerance is **10 minutes** on either side of the server's wall clock; keep the two hosts loosely time-synchronized.
 
 ## License
 

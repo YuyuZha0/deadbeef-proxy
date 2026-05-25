@@ -9,6 +9,11 @@
         </encoder>
     </appender>
 
+    <!-- Vert.x logs "Connection was closed" at ERROR whenever a peer drops the TCP socket
+         after a normal HTTP response. That happens on every test that ends with a non-2xx
+         response, swamping CI output with non-actionable noise. -->
+    <logger name="io.vertx.core.http.impl.HttpClientRequestImpl" level="OFF"/>
+
     <root level="debug">
         <appender-ref ref="STDOUT"/>
     </root>
