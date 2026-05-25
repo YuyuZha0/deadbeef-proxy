@@ -1,17 +1,16 @@
 package org.deadbeef.util;
 
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import com.google.protobuf.Descriptors;
 import io.vertx.core.MultiMap;
-import lombok.NonNull;
-import org.deadbeef.protocol.HttpProto;
-
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
-import java.util.stream.Collectors;
+import lombok.NonNull;
+import org.deadbeef.protocol.HttpProto;
 
 public final class HttpHeaderDecoder implements Function<HttpProto.Headers, MultiMap> {
 
@@ -20,7 +19,7 @@ public final class HttpHeaderDecoder implements Function<HttpProto.Headers, Mult
           .filter(
               fieldDescriptor ->
                   fieldDescriptor.getJavaType() == Descriptors.FieldDescriptor.JavaType.STRING)
-          .collect(Collectors.toList());
+          .collect(ImmutableList.toImmutableList());
   private final boolean allLowerCase;
 
   public HttpHeaderDecoder(boolean allLowerCase) {
