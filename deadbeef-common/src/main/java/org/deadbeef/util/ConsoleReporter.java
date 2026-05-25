@@ -33,15 +33,28 @@ public class ConsoleReporter extends ScheduledReporter {
   private static final long ONE_MB = ONE_KB << 10;
   private static final long ONE_GB = ONE_MB << 10;
   private static final long ONE_TB = ONE_GB << 10;
+
   private static final int CONSOLE_WIDTH = 80;
+  // Inner content width between the two box vertical bars and a single space padding on each side.
+  private static final int INNER_WIDTH = CONSOLE_WIDTH - 4;
+  // Column at which the right edge of a key/value's value sits within the inner content area.
+  private static final int VALUE_COLUMN = INNER_WIDTH - 4;
+
+  private static final String TOP_LEFT = "┌";
+  private static final String TOP_RIGHT = "┐";
+  private static final String BOTTOM_LEFT = "└";
+  private static final String BOTTOM_RIGHT = "┘";
+  private static final String VERTICAL = "│";
+  private static final String HORIZONTAL = "─";
+
   private final PrintStream output;
   private final Locale locale;
   private final Clock clock;
   private final DateTimeFormatter dateTimeFormatter;
-
   private final ZoneId zoneId;
+  private final Ansi ansi;
 
-  private ConsoleReporter(
+  ConsoleReporter(
       MetricRegistry registry,
       PrintStream output,
       Locale locale,
@@ -52,7 +65,8 @@ public class ConsoleReporter extends ScheduledReporter {
       MetricFilter filter,
       ScheduledExecutorService executor,
       boolean shutdownExecutorOnStop,
-      Set<MetricAttribute> disabledMetricAttributes) {
+      Set<MetricAttribute> disabledMetricAttributes,
+      boolean colorize) {
     super(
         registry,
         "console-reporter",
@@ -68,6 +82,7 @@ public class ConsoleReporter extends ScheduledReporter {
     this.dateTimeFormatter =
         DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT, FormatStyle.MEDIUM);
     this.zoneId = zoneId;
+    this.ansi = colorize ? Ansi.ENABLED : Ansi.DISABLED;
   }
 
   /**
@@ -90,54 +105,51 @@ public class ConsoleReporter extends ScheduledReporter {
       SortedMap<String, Timer> timers) {
     final String dateTime =
         dateTimeFormatter.format(Instant.ofEpochMilli(clock.getTime()).atZone(zoneId));
-    printWithBanner(dateTime, '=');
-    output.println();
 
+    printBoxTop("metrics · " + dateTime);
+
+    boolean firstSection = true;
     if (!gauges.isEmpty()) {
-      printWithBanner("-- Gauges", '-');
+      printSectionTitle("Gauges", firstSection);
+      firstSection = false;
       for (Map.Entry<String, Gauge> entry : gauges.entrySet()) {
-        output.println(entry.getKey());
+        printMetricName(entry.getKey());
         printGauge(entry.getValue());
       }
-      output.println();
     }
-
     if (!counters.isEmpty()) {
-      printWithBanner("-- Counters", '-');
+      printSectionTitle("Counters", firstSection);
+      firstSection = false;
       for (Map.Entry<String, Counter> entry : counters.entrySet()) {
-        output.println(entry.getKey());
-        printCounter(entry);
+        printCounter(entry.getKey(), entry.getValue());
       }
-      output.println();
     }
-
     if (!histograms.isEmpty()) {
-      printWithBanner("-- Histograms", '-');
+      printSectionTitle("Histograms", firstSection);
+      firstSection = false;
       for (Map.Entry<String, Histogram> entry : histograms.entrySet()) {
-        output.println(entry.getKey());
+        printMetricName(entry.getKey());
         printHistogram(entry.getValue());
       }
-      output.println();
     }
-
     if (!meters.isEmpty()) {
-      printWithBanner("-- Meters", '-');
+      printSectionTitle("Meters", firstSection);
+      firstSection = false;
       for (Map.Entry<String, Meter> entry : meters.entrySet()) {
-        output.println(entry.getKey());
+        printMetricName(entry.getKey());
         printMeter(entry.getValue());
       }
-      output.println();
     }
-
     if (!timers.isEmpty()) {
-      printWithBanner("-- Timers", '-');
+      printSectionTitle("Timers", firstSection);
+      firstSection = false;
       for (Map.Entry<String, Timer> entry : timers.entrySet()) {
-        output.println(entry.getKey());
+        printMetricName(entry.getKey());
         printTimer(entry.getValue());
       }
-      output.println();
     }
 
+    printBoxBottom();
     output.println();
     output.flush();
   }
@@ -158,210 +170,232 @@ public class ConsoleReporter extends ScheduledReporter {
     return new DecimalFormat("#.## TB").format(d / ONE_TB);
   }
 
-  // specialized for bytes transferred
-  private void printMeter(Meter meter) {
-    printIfEnabled(
-        MetricAttribute.COUNT,
-        String.format(locale, "             total = %s", humanReadableBytes(meter.getCount())));
-    printIfEnabled(
-        MetricAttribute.MEAN_RATE,
-        String.format(
-            locale,
-            "         mean rate = %s/%s",
-            humanReadableBytes(meter.getMeanRate()),
-            getRateUnit()));
-    printIfEnabled(
-        MetricAttribute.M1_RATE,
-        String.format(
-            locale,
-            "     1-minute rate = %s/%s",
-            humanReadableBytes(meter.getOneMinuteRate()),
-            getRateUnit()));
-    printIfEnabled(
-        MetricAttribute.M5_RATE,
-        String.format(
-            locale,
-            "     5-minute rate = %s/%s",
-            humanReadableBytes(meter.getFiveMinuteRate()),
-            getRateUnit()));
-    printIfEnabled(
-        MetricAttribute.M15_RATE,
-        String.format(
-            locale,
-            "    15-minute rate = %s/%s",
-            humanReadableBytes(meter.getFifteenMinuteRate()),
-            getRateUnit()));
-  }
-
-  private void printCounter(Map.Entry<String, Counter> entry) {
-    output.printf(locale, "             count = %d%n", entry.getValue().getCount());
-  }
-
   private void printGauge(Gauge<?> gauge) {
-    output.printf(locale, "             value = %s%n", gauge.getValue());
+    printKV("value", String.valueOf(gauge.getValue()));
+  }
+
+  private void printCounter(String name, Counter counter) {
+    // Counters are single-value metrics; render name and value on a single visual row when short.
+    printMetricName(name);
+    printKV("count", String.format(locale, "%d", counter.getCount()));
+  }
+
+  private void printMeter(Meter meter) {
+    printKVIfEnabled(MetricAttribute.COUNT, "total", humanReadableBytes(meter.getCount()));
+    printKVIfEnabled(
+        MetricAttribute.MEAN_RATE,
+        "mean rate",
+        humanReadableBytes(meter.getMeanRate()) + "/" + getRateUnit());
+    printKVIfEnabled(
+        MetricAttribute.M1_RATE,
+        "1-minute rate",
+        humanReadableBytes(meter.getOneMinuteRate()) + "/" + getRateUnit());
+    printKVIfEnabled(
+        MetricAttribute.M5_RATE,
+        "5-minute rate",
+        humanReadableBytes(meter.getFiveMinuteRate()) + "/" + getRateUnit());
+    printKVIfEnabled(
+        MetricAttribute.M15_RATE,
+        "15-minute rate",
+        humanReadableBytes(meter.getFifteenMinuteRate()) + "/" + getRateUnit());
   }
 
   private void printHistogram(Histogram histogram) {
-    printIfEnabled(
-        MetricAttribute.COUNT,
-        String.format(locale, "             count = %d", histogram.getCount()));
+    printKVIfEnabled(MetricAttribute.COUNT, "count", String.format(locale, "%d", histogram.getCount()));
     Snapshot snapshot = histogram.getSnapshot();
-    printIfEnabled(
-        MetricAttribute.MIN, String.format(locale, "               min = %d", snapshot.getMin()));
-    printIfEnabled(
-        MetricAttribute.MAX, String.format(locale, "               max = %d", snapshot.getMax()));
-    printIfEnabled(
-        MetricAttribute.MEAN,
-        String.format(locale, "              mean = %2.2f", snapshot.getMean()));
-    printIfEnabled(
-        MetricAttribute.STDDEV,
-        String.format(locale, "            stddev = %2.2f", snapshot.getStdDev()));
-    printIfEnabled(
-        MetricAttribute.P50,
-        String.format(locale, "            median = %2.2f", snapshot.getMedian()));
-    printIfEnabled(
-        MetricAttribute.P75,
-        String.format(locale, "              75%% <= %2.2f", snapshot.get75thPercentile()));
-    printIfEnabled(
-        MetricAttribute.P95,
-        String.format(locale, "              95%% <= %2.2f", snapshot.get95thPercentile()));
-    printIfEnabled(
-        MetricAttribute.P98,
-        String.format(locale, "              98%% <= %2.2f", snapshot.get98thPercentile()));
-    printIfEnabled(
-        MetricAttribute.P99,
-        String.format(locale, "              99%% <= %2.2f", snapshot.get99thPercentile()));
-    printIfEnabled(
-        MetricAttribute.P999,
-        String.format(locale, "            99.9%% <= %2.2f", snapshot.get999thPercentile()));
+    printKVIfEnabled(MetricAttribute.MIN, "min", String.format(locale, "%d", snapshot.getMin()));
+    printKVIfEnabled(MetricAttribute.MAX, "max", String.format(locale, "%d", snapshot.getMax()));
+    printKVIfEnabled(MetricAttribute.MEAN, "mean", String.format(locale, "%2.2f", snapshot.getMean()));
+    printKVIfEnabled(MetricAttribute.STDDEV, "stddev", String.format(locale, "%2.2f", snapshot.getStdDev()));
+    printKVIfEnabled(MetricAttribute.P50, "median", String.format(locale, "%2.2f", snapshot.getMedian()));
+    printKVIfEnabled(MetricAttribute.P75, "75%", String.format(locale, "%2.2f", snapshot.get75thPercentile()));
+    printKVIfEnabled(MetricAttribute.P95, "95%", String.format(locale, "%2.2f", snapshot.get95thPercentile()));
+    printKVIfEnabled(MetricAttribute.P98, "98%", String.format(locale, "%2.2f", snapshot.get98thPercentile()));
+    printKVIfEnabled(MetricAttribute.P99, "99%", String.format(locale, "%2.2f", snapshot.get99thPercentile()));
+    printKVIfEnabled(MetricAttribute.P999, "99.9%", String.format(locale, "%2.2f", snapshot.get999thPercentile()));
   }
 
   private void printTimer(Timer timer) {
-    final Snapshot snapshot = timer.getSnapshot();
-    printIfEnabled(
-        MetricAttribute.COUNT, String.format(locale, "             count = %d", timer.getCount()));
-    printIfEnabled(
+    Snapshot snapshot = timer.getSnapshot();
+    String d = getDurationUnit();
+    String r = getRateUnit();
+    printKVIfEnabled(MetricAttribute.COUNT, "count", String.format(locale, "%d", timer.getCount()));
+    printKVIfEnabled(
         MetricAttribute.MEAN_RATE,
-        String.format(
-            locale,
-            "         mean rate = %2.2f calls/%s",
-            convertRate(timer.getMeanRate()),
-            getRateUnit()));
-    printIfEnabled(
+        "mean rate",
+        String.format(locale, "%2.2f calls/%s", convertRate(timer.getMeanRate()), r));
+    printKVIfEnabled(
         MetricAttribute.M1_RATE,
-        String.format(
-            locale,
-            "     1-minute rate = %2.2f calls/%s",
-            convertRate(timer.getOneMinuteRate()),
-            getRateUnit()));
-    printIfEnabled(
+        "1-minute rate",
+        String.format(locale, "%2.2f calls/%s", convertRate(timer.getOneMinuteRate()), r));
+    printKVIfEnabled(
         MetricAttribute.M5_RATE,
-        String.format(
-            locale,
-            "     5-minute rate = %2.2f calls/%s",
-            convertRate(timer.getFiveMinuteRate()),
-            getRateUnit()));
-    printIfEnabled(
+        "5-minute rate",
+        String.format(locale, "%2.2f calls/%s", convertRate(timer.getFiveMinuteRate()), r));
+    printKVIfEnabled(
         MetricAttribute.M15_RATE,
-        String.format(
-            locale,
-            "    15-minute rate = %2.2f calls/%s",
-            convertRate(timer.getFifteenMinuteRate()),
-            getRateUnit()));
-
-    printIfEnabled(
+        "15-minute rate",
+        String.format(locale, "%2.2f calls/%s", convertRate(timer.getFifteenMinuteRate()), r));
+    printKVIfEnabled(
         MetricAttribute.MIN,
-        String.format(
-            locale,
-            "               min = %2.2f %s",
-            convertDuration(snapshot.getMin()),
-            getDurationUnit()));
-    printIfEnabled(
+        "min",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.getMin()), d));
+    printKVIfEnabled(
         MetricAttribute.MAX,
-        String.format(
-            locale,
-            "               max = %2.2f %s",
-            convertDuration(snapshot.getMax()),
-            getDurationUnit()));
-    printIfEnabled(
+        "max",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.getMax()), d));
+    printKVIfEnabled(
         MetricAttribute.MEAN,
-        String.format(
-            locale,
-            "              mean = %2.2f %s",
-            convertDuration(snapshot.getMean()),
-            getDurationUnit()));
-    printIfEnabled(
+        "mean",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.getMean()), d));
+    printKVIfEnabled(
         MetricAttribute.STDDEV,
-        String.format(
-            locale,
-            "            stddev = %2.2f %s",
-            convertDuration(snapshot.getStdDev()),
-            getDurationUnit()));
-    printIfEnabled(
+        "stddev",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.getStdDev()), d));
+    printKVIfEnabled(
         MetricAttribute.P50,
-        String.format(
-            locale,
-            "            median = %2.2f %s",
-            convertDuration(snapshot.getMedian()),
-            getDurationUnit()));
-    printIfEnabled(
+        "median",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.getMedian()), d));
+    printKVIfEnabled(
         MetricAttribute.P75,
-        String.format(
-            locale,
-            "              75%% <= %2.2f %s",
-            convertDuration(snapshot.get75thPercentile()),
-            getDurationUnit()));
-    printIfEnabled(
+        "75%",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.get75thPercentile()), d));
+    printKVIfEnabled(
         MetricAttribute.P95,
-        String.format(
-            locale,
-            "              95%% <= %2.2f %s",
-            convertDuration(snapshot.get95thPercentile()),
-            getDurationUnit()));
-    printIfEnabled(
+        "95%",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.get95thPercentile()), d));
+    printKVIfEnabled(
         MetricAttribute.P98,
-        String.format(
-            locale,
-            "              98%% <= %2.2f %s",
-            convertDuration(snapshot.get98thPercentile()),
-            getDurationUnit()));
-    printIfEnabled(
+        "98%",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.get98thPercentile()), d));
+    printKVIfEnabled(
         MetricAttribute.P99,
-        String.format(
-            locale,
-            "              99%% <= %2.2f %s",
-            convertDuration(snapshot.get99thPercentile()),
-            getDurationUnit()));
-    printIfEnabled(
+        "99%",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.get99thPercentile()), d));
+    printKVIfEnabled(
         MetricAttribute.P999,
-        String.format(
-            locale,
-            "            99.9%% <= %2.2f %s",
-            convertDuration(snapshot.get999thPercentile()),
-            getDurationUnit()));
+        "99.9%",
+        String.format(locale, "%2.2f %s", convertDuration(snapshot.get999thPercentile()), d));
   }
 
-  private void printWithBanner(String s, char c) {
-    output.print(s);
-    output.print(' ');
-    for (int i = 0; i < (CONSOLE_WIDTH - s.length() - 1); i++) {
-      output.print(c);
+  // ---- box-drawing helpers ----
+
+  private void printBoxTop(String title) {
+    // Title appears between two leading "─ " and trailing " " inside the top edge.
+    String label = " " + title + " ";
+    int dashes = CONSOLE_WIDTH - 2 - 1 - label.length();
+    if (dashes < 0) {
+      dashes = 0;
     }
-    output.println();
+    StringBuilder sb = new StringBuilder(CONSOLE_WIDTH);
+    sb.append(ansi.dim(TOP_LEFT + HORIZONTAL));
+    sb.append(ansi.bold(ansi.cyan(label)));
+    for (int i = 0; i < dashes; i++) {
+      sb.append(ansi.dim(HORIZONTAL));
+    }
+    sb.append(ansi.dim(TOP_RIGHT));
+    output.println(sb.toString());
   }
 
-  /**
-   * Print only if the attribute is enabled
-   *
-   * @param type Metric attribute
-   * @param status Status to be logged
-   */
-  private void printIfEnabled(MetricAttribute type, String status) {
+  private void printBoxBottom() {
+    StringBuilder sb = new StringBuilder(CONSOLE_WIDTH);
+    sb.append(ansi.dim(BOTTOM_LEFT));
+    for (int i = 0; i < CONSOLE_WIDTH - 2; i++) {
+      sb.append(ansi.dim(HORIZONTAL));
+    }
+    sb.append(ansi.dim(BOTTOM_RIGHT));
+    output.println(sb.toString());
+  }
+
+  /** Print a single line inside the box. {@code plain} is the unstyled visible content used for
+   * width measurement; {@code styled} is what is actually emitted (may include ANSI codes). */
+  private void printBoxLine(String plain, String styled) {
+    int pad = INNER_WIDTH - plain.length();
+    if (pad < 0) {
+      pad = 0;
+    }
+    StringBuilder sb = new StringBuilder();
+    sb.append(ansi.dim(VERTICAL)).append(' ').append(styled);
+    for (int i = 0; i < pad; i++) {
+      sb.append(' ');
+    }
+    sb.append(' ').append(ansi.dim(VERTICAL));
+    output.println(sb.toString());
+  }
+
+  private void printBlankBoxLine() {
+    printBoxLine("", "");
+  }
+
+  private void printSectionTitle(String name, boolean firstSection) {
+    if (!firstSection) {
+      printBlankBoxLine();
+    }
+    printBoxLine(name, ansi.bold(ansi.yellow(name)));
+  }
+
+  private void printMetricName(String name) {
+    String indented = "  " + name;
+    printBoxLine(indented, indented);
+  }
+
+  private void printKV(String label, String value) {
+    // Layout: "    <label> .... <value>" right-aligned to VALUE_COLUMN, then padded to INNER_WIDTH.
+    String indent = "    ";
+    int valueStart = VALUE_COLUMN - value.length();
+    int dots = valueStart - indent.length() - label.length() - 1; // -1 for the space after label
+    if (dots < 1) {
+      dots = 1;
+    }
+    StringBuilder plain = new StringBuilder(INNER_WIDTH);
+    plain.append(indent).append(label).append(' ');
+    for (int i = 0; i < dots; i++) {
+      plain.append('.');
+    }
+    plain.append(' ').append(value);
+    printBoxLine(plain.toString(), plain.toString());
+  }
+
+  private void printKVIfEnabled(MetricAttribute type, String label, String value) {
     if (getDisabledMetricAttributes().contains(type)) {
       return;
     }
+    printKV(label, value);
+  }
 
-    output.println(status);
+  // ---- ANSI helper ----
+
+  private static final class Ansi {
+    static final Ansi ENABLED = new Ansi(true);
+    static final Ansi DISABLED = new Ansi(false);
+
+    private static final String RESET = "[0m";
+    private static final String DIM = "[2m";
+    private static final String BOLD = "[1m";
+    private static final String CYAN = "[36m";
+    private static final String YELLOW = "[33m";
+
+    private final boolean on;
+
+    private Ansi(boolean on) {
+      this.on = on;
+    }
+
+    String dim(String text) {
+      return on ? DIM + text + RESET : text;
+    }
+
+    String bold(String text) {
+      return on ? BOLD + text + RESET : text;
+    }
+
+    String cyan(String text) {
+      return on ? CYAN + text + RESET : text;
+    }
+
+    String yellow(String text) {
+      return on ? YELLOW + text + RESET : text;
+    }
   }
 
   /**
@@ -381,6 +415,7 @@ public class ConsoleReporter extends ScheduledReporter {
     private ScheduledExecutorService executor;
     private boolean shutdownExecutorOnStop;
     private Set<MetricAttribute> disabledMetricAttributes;
+    private Boolean colorize;
 
     private Builder(MetricRegistry registry) {
       this.registry = registry;
@@ -393,131 +428,68 @@ public class ConsoleReporter extends ScheduledReporter {
       this.filter = MetricFilter.ALL;
       this.executor = null;
       this.shutdownExecutorOnStop = true;
-      disabledMetricAttributes = Collections.emptySet();
+      this.disabledMetricAttributes = Collections.emptySet();
+      this.colorize = null;
     }
 
-    /**
-     * Specifies whether or not, the executor (used for reporting) will be stopped with same time
-     * with reporter. Default value is true. Setting this parameter to false, has the sense in
-     * combining with providing external managed executor via {@link
-     * #scheduleOn(ScheduledExecutorService)}.
-     *
-     * @param shutdownExecutorOnStop if true, then executor will be stopped in same time with this
-     *     reporter
-     * @return {@code this}
-     */
     public Builder shutdownExecutorOnStop(boolean shutdownExecutorOnStop) {
       this.shutdownExecutorOnStop = shutdownExecutorOnStop;
       return this;
     }
 
-    /**
-     * Specifies the executor to use while scheduling reporting of metrics. Default value is null.
-     * Null value leads to executor will be auto created on start.
-     *
-     * @param executor the executor to use while scheduling reporting of metrics.
-     * @return {@code this}
-     */
     public Builder scheduleOn(ScheduledExecutorService executor) {
       this.executor = executor;
       return this;
     }
 
-    /**
-     * Write to the given {@link PrintStream}.
-     *
-     * @param output a {@link PrintStream} instance.
-     * @return {@code this}
-     */
     public Builder outputTo(PrintStream output) {
       this.output = output;
       return this;
     }
 
-    /**
-     * Format numbers for the given {@link Locale}.
-     *
-     * @param locale a {@link Locale}
-     * @return {@code this}
-     */
     public Builder formattedFor(Locale locale) {
       this.locale = locale;
       return this;
     }
 
-    /**
-     * Use the given {@link Clock} instance for the time.
-     *
-     * @param clock a {@link Clock} instance
-     * @return {@code this}
-     */
     public Builder withClock(Clock clock) {
       this.clock = clock;
       return this;
     }
 
-    /**
-     * Use the given {@link ZoneId} for the time.
-     *
-     * @param zoneId a {@link ZoneId}
-     * @return {@code this}
-     */
     public Builder formattedFor(ZoneId zoneId) {
       this.zoneId = zoneId;
       return this;
     }
 
-    /**
-     * Convert rates to the given time unit.
-     *
-     * @param rateUnit a unit of time
-     * @return {@code this}
-     */
     public Builder convertRatesTo(TimeUnit rateUnit) {
       this.rateUnit = rateUnit;
       return this;
     }
 
-    /**
-     * Convert durations to the given time unit.
-     *
-     * @param durationUnit a unit of time
-     * @return {@code this}
-     */
     public Builder convertDurationsTo(TimeUnit durationUnit) {
       this.durationUnit = durationUnit;
       return this;
     }
 
-    /**
-     * Only report metrics which match the given filter.
-     *
-     * @param filter a {@link MetricFilter}
-     * @return {@code this}
-     */
     public Builder filter(MetricFilter filter) {
       this.filter = filter;
       return this;
     }
 
-    /**
-     * Don't report the passed metric attributes for all metrics (e.g. "p999", "stddev" or "m15").
-     * See {@link MetricAttribute}.
-     *
-     * @param disabledMetricAttributes a {@link MetricFilter}
-     * @return {@code this}
-     */
     public Builder disabledMetricAttributes(Set<MetricAttribute> disabledMetricAttributes) {
       this.disabledMetricAttributes = disabledMetricAttributes;
       return this;
     }
 
-    /**
-     * Builds a {@link ConsoleReporter} with the given properties.
-     *
-     * @return a {@link ConsoleReporter}
-     */
+    /** Visible for testing — force ANSI color emission on or off. Null leaves auto-detection. */
+    Builder withColor(Boolean colorize) {
+      this.colorize = colorize;
+      return this;
+    }
+
     public ConsoleReporter build() {
+      boolean useColor = colorize != null ? colorize : System.console() != null;
       return new ConsoleReporter(
           registry,
           output,
@@ -529,7 +501,8 @@ public class ConsoleReporter extends ScheduledReporter {
           filter,
           executor,
           shutdownExecutorOnStop,
-          disabledMetricAttributes);
+          disabledMetricAttributes,
+          useColor);
     }
   }
 }
