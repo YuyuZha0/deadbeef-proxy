@@ -9,6 +9,8 @@
         </encoder>
     </appender>
 
+    <logger name="io.vertx.core.http.impl.HttpClientRequestImpl" level="OFF"/>
+
     <root level="INFO">
         <appender-ref ref="STDOUT"/>
     </root>
