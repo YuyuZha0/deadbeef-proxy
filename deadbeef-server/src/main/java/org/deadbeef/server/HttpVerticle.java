@@ -13,6 +13,7 @@ import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
+import org.deadbeef.security.UpstreamAddressFilter;
 import org.deadbeef.streams.DefaultPipeFactory;
 
 import java.util.concurrent.TimeUnit;
@@ -65,11 +66,12 @@ public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
     ProxyAuthenticationValidator validator =
         ProxyAuthenticationValidator.fromEntries(config.getAuth());
     DefaultPipeFactory pipeFactory = new DefaultPipeFactory();
+    UpstreamAddressFilter addressFilter = UpstreamAddressFilter.defaultDenyList();
 
     Handler<HttpServerRequest> proxyHandler =
-        new HttpProxyHandler(getVertx(), httpClient, validator, pipeFactory);
+        new HttpProxyHandler(getVertx(), httpClient, validator, pipeFactory, addressFilter);
     Handler<HttpServerRequest> connectHandler =
-        new ServerConnectHandler(netClient, validator, pipeFactory);
+        new ServerConnectHandler(getVertx(), netClient, validator, pipeFactory, addressFilter);
 
     httpServer.requestHandler(
         request -> {

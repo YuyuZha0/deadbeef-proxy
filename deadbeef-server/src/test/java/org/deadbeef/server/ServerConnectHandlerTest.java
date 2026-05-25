@@ -15,6 +15,7 @@ import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
+import org.deadbeef.security.UpstreamAddressFilter;
 import org.deadbeef.streams.DefaultPipeFactory;
 import org.deadbeef.util.Constants;
 import org.junit.Rule;
@@ -29,12 +30,17 @@ public class ServerConnectHandlerTest {
 
   @Rule public RunTestOnContext rule = new RunTestOnContext();
 
+  /** Default test setup allows loopback so the fake upstream (bound to 127.0.0.1) can be reached. */
   private Future<HttpServer> startProxyServer(Vertx vertx) {
+    return startProxyServer(vertx, UpstreamAddressFilter.builder().allowLoopback().build());
+  }
+
+  private Future<HttpServer> startProxyServer(Vertx vertx, UpstreamAddressFilter filter) {
     NetClient netClient = vertx.createNetClient();
     ProxyAuthenticationValidator validator =
         ProxyAuthenticationValidator.simple(SECRET_ID, SECRET_KEY);
     ServerConnectHandler handler =
-        new ServerConnectHandler(netClient, validator, new DefaultPipeFactory());
+        new ServerConnectHandler(vertx, netClient, validator, new DefaultPipeFactory(), filter);
     HttpServer server = vertx.createHttpServer();
     server.requestHandler(
         req -> {
@@ -145,6 +151,56 @@ public class ServerConnectHandlerTest {
                                 })
                             .onFailure(ctx::fail);
                       });
+            });
+  }
+
+  // ---- new: default-deny filter rejects forbidden literal upstreams with 403 ----
+
+  @Test
+  public void filterRejectsLoopbackLiteralWith403(TestContext ctx) {
+    runForbiddenLiteralTest(ctx, "127.0.0.1:9");
+  }
+
+  @Test
+  public void filterRejectsLinkLocalMetadataWith403(TestContext ctx) {
+    runForbiddenLiteralTest(ctx, "169.254.169.254:80");
+  }
+
+  @Test
+  public void filterRejectsRfc1918Rangewith403(TestContext ctx) {
+    runForbiddenLiteralTest(ctx, "10.0.0.1:80");
+  }
+
+  @Test
+  public void filterRejectsAnyLocalWith403(TestContext ctx) {
+    runForbiddenLiteralTest(ctx, "0.0.0.0:80");
+  }
+
+  private void runForbiddenLiteralTest(TestContext ctx, String authority) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    String token = new ProxyAuthenticationGenerator(SECRET_ID, SECRET_KEY).getString();
+    // Use strict default filter (no loopback allowance).
+    startProxyServer(vertx, UpstreamAddressFilter.defaultDenyList())
+        .onFailure(ctx::fail)
+        .onSuccess(
+            proxy -> {
+              HttpClient client = vertx.createHttpClient();
+              client
+                  .request(
+                      new RequestOptions()
+                          .setMethod(HttpMethod.CONNECT)
+                          .setHost("127.0.0.1")
+                          .setPort(proxy.actualPort())
+                          .setURI(authority)
+                          .putHeader(Constants.authHeaderName(), token))
+                  .compose(req -> req.connect())
+                  .onSuccess(
+                      resp -> {
+                        ctx.assertEquals(403, resp.statusCode());
+                        done.complete();
+                      })
+                  .onFailure(ctx::fail);
             });
   }
 }

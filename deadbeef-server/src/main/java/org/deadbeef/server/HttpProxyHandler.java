@@ -18,6 +18,8 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.security.UpstreamAddressFilter;
+import org.deadbeef.security.UpstreamResolver;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.PrefixAndAction;
@@ -27,27 +29,33 @@ import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 
 @Slf4j
 public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
+  private final Vertx vertx;
   private final HttpClientResponseEncoder encoder = new HttpClientResponseEncoder();
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
   private final PipeFactory pipeFactory;
   private final HttpClient httpClient;
   private final ProxyStreamPrefixVisitor<HttpClientRequest> proxyStreamPrefixVisitor;
-
   private final ProxyAuthenticationValidator proxyAuthenticationValidator;
+  private final UpstreamAddressFilter addressFilter;
 
   public HttpProxyHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
       @NonNull ProxyAuthenticationValidator validator,
-      @NonNull PipeFactory pipeFactory) {
+      @NonNull PipeFactory pipeFactory,
+      @NonNull UpstreamAddressFilter addressFilter) {
+    this.vertx = vertx;
     this.httpClient = httpClient;
     this.proxyStreamPrefixVisitor = new ProxyStreamPrefixVisitor<>(vertx, pipeFactory);
     this.proxyAuthenticationValidator = validator;
     this.pipeFactory = pipeFactory;
+    this.addressFilter = addressFilter;
   }
 
   @Override
@@ -79,8 +87,40 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
               if (log.isDebugEnabled()) {
                 log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), request);
               }
+              dispatch(request, prefixAndAction, serverResponse, errorHandler);
+            });
+  }
+
+  private void dispatch(
+      HttpProto.Request request,
+      PrefixAndAction<? super HttpClientRequest> prefixAndAction,
+      HttpServerResponse serverResponse,
+      Handler<Throwable> errorHandler) {
+    URI uri;
+    try {
+      uri = new URI(request.getAbsoluteUri());
+    } catch (URISyntaxException e) {
+      serverResponse.setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
+      return;
+    }
+    String host = uri.getHost();
+    if (host == null || host.isEmpty()) {
+      serverResponse.setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
+      return;
+    }
+    int port = effectivePort(uri);
+
+    UpstreamResolver.resolveAndFilter(vertx, host, port, addressFilter)
+        .onFailure(cause -> UpstreamResolver.replyWithError(host, cause, serverResponse))
+        .onSuccess(
+            socketAddress -> {
+              RequestOptions options = buildRequestOptions(request);
+              // Pin the TCP target to the resolved IP via Vert.x's SocketAddress so the connection
+              // does not re-resolve (defeats DNS rebinding) while leaving the URI / Host header
+              // unchanged for upstream SNI / virtual-host correctness.
+              options.setServer(socketAddress);
               httpClient.request(
-                  buildRequestOptions(request),
+                  options,
                   ar -> {
                     if (ar.succeeded()) {
                       onRequestSuccess(ar.result(), prefixAndAction, serverResponse, errorHandler);
@@ -89,6 +129,13 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
                     }
                   });
             });
+  }
+
+  private static int effectivePort(URI uri) {
+    if (uri.getPort() != -1) {
+      return uri.getPort();
+    }
+    return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
   }
 
   private void onRequestSuccess(

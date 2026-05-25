@@ -3,6 +3,7 @@ package org.deadbeef.server;
 import com.google.common.net.HostAndPort;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.net.NetClient;
@@ -11,25 +12,32 @@ import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
+import org.deadbeef.security.UpstreamAddressFilter;
+import org.deadbeef.security.UpstreamResolver;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.util.Constants;
-import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
 
 @Slf4j
 public final class ServerConnectHandler implements Handler<HttpServerRequest> {
 
+  private final Vertx vertx;
   private final NetClient netClient;
   private final ProxyAuthenticationValidator validator;
   private final PipeFactory pipeFactory;
+  private final UpstreamAddressFilter addressFilter;
 
   public ServerConnectHandler(
+      @NonNull Vertx vertx,
       @NonNull NetClient netClient,
       @NonNull ProxyAuthenticationValidator validator,
-      @NonNull PipeFactory pipeFactory) {
+      @NonNull PipeFactory pipeFactory,
+      @NonNull UpstreamAddressFilter addressFilter) {
+    this.vertx = vertx;
     this.netClient = netClient;
     this.validator = validator;
     this.pipeFactory = pipeFactory;
+    this.addressFilter = addressFilter;
   }
 
   @Override
@@ -57,14 +65,15 @@ public final class ServerConnectHandler implements Handler<HttpServerRequest> {
 
     request.pause();
 
-    netClient
-        .connect(target.getPort(), target.getHost())
-        .onFailure(
-            cause -> {
-              log.warn("Failed to connect upstream {}:{}: {}", target.getHost(), target.getPort(), cause.getMessage());
-              response.setStatusCode(HttpRequestUtils.errorMapping(cause).code()).end();
-            })
-        .onSuccess(upstream -> upgrade(request, upstream));
+    UpstreamResolver.resolveAndFilter(vertx, target.getHost(), target.getPort(), addressFilter)
+        .onFailure(cause -> UpstreamResolver.replyWithError(target.getHost(), cause, response))
+        .onSuccess(
+            socketAddress ->
+                netClient
+                    .connect(socketAddress)
+                    .onFailure(
+                        cause -> UpstreamResolver.replyWithError(target.getHost(), cause, response))
+                    .onSuccess(upstream -> upgrade(request, upstream)));
   }
 
   private void upgrade(HttpServerRequest request, NetSocket upstream) {
