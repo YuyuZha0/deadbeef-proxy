@@ -27,11 +27,10 @@ public final class ProxyAuthenticationValidator
   private final ConcurrentMap<NonceKey, Boolean> nonceCache =
       Caffeine.newBuilder()
           .expireAfterWrite(2 * MAX_TIME_DELTA + (MAX_TIME_DELTA >> 1), TimeUnit.MILLISECONDS)
-          .maximumSize(1L << 20)
+          .maximumSize(1L << 18)
           .<NonceKey, Boolean>build()
           .asMap();
   private final ListMultimap<String, HashFunction> storedMap;
-
   private ProxyAuthenticationValidator(ListMultimap<String, HashFunction> storedMap) {
     this.storedMap = storedMap;
   }
