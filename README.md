@@ -31,7 +31,7 @@ A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing betwe
 ## System Requirements
 
 - **JDK 21** (or newer)
-- **Maven 3.9+** to build (older Maven versions cannot fully drive the JDK 21 toolchain)
+- **Maven 3.6.3+** to build (any reasonably recent Maven works; the project has been verified on 3.6.3 with JDK 21)
 
 ## Building
 
