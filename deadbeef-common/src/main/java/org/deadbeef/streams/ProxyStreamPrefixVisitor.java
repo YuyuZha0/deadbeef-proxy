@@ -4,7 +4,6 @@ import com.google.common.base.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
-import io.netty.util.ReferenceCountUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -78,14 +77,12 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
                           try {
                             copy(src, writeStream, prefixBuffer, whenWritingFinished);
                           } catch (Throwable cause) {
-                            prefixBuffer.release();
                             whenWritingFinished.handle(Future.failedFuture(cause));
                           }
                         });
             handler.handle(Future.succeededFuture(new PrefixAndAction<>(prefix, action)));
           } else {
             Utils.clearHandlers(src);
-            prefixBuffer.release();
             handler.handle(Future.failedFuture(ar.cause()));
           }
         });
@@ -100,7 +97,6 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     Buffer remaining = prefixBuffer.readRemaining();
     boolean streamEnded = prefixBuffer.isStreamEnded();
     Utils.clearHandlers(src);
-    prefixBuffer.release();
 
     if (remaining.length() == 0 && streamEnded) {
       handler.handle(Future.succeededFuture());
@@ -133,12 +129,11 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
     private static final Buffer EMPTY_BUFFER = Buffer.buffer(Unpooled.EMPTY_BUFFER);
 
-    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(0xff);
+    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.heapBuffer(0xff);
     private final ReadStream<Buffer> src;
     private final Promise<Buffer> promise;
     private final int bodyLengthLimit;
     private int bodyLen = -1;
-    private boolean released;
 
     @Getter private volatile boolean streamEnded;
 
@@ -235,14 +230,6 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
         return Buffer.buffer(tempBuf.readBytes(remainingBytes));
       } else {
         return EMPTY_BUFFER;
-      }
-    }
-
-    /** Releases the pooled scratch buffer. Idempotent. */
-    void release() {
-      if (!released) {
-        released = true;
-        ReferenceCountUtil.release(tempBuf);
       }
     }
   }
