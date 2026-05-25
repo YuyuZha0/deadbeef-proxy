@@ -13,7 +13,6 @@ public class ClientConfigTest {
     String src =
         "remoteHost: remote.example.com\n"
             + "httpPort: 14483\n"
-            + "httpsPort: 14484\n"
             + "localPort: 14482\n"
             + "secretId: an-id\n"
             + "secretKey: a-key\n";
@@ -31,8 +30,7 @@ public class ClientConfigTest {
         new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
     ClientConfig cfg =
         yaml.readValue(
-            "remoteHost: ' '\nhttpPort: 14483\nhttpsPort: 14484\nlocalPort: 14482\n"
-                + "secretId: x\nsecretKey: y\n",
+            "remoteHost: ' '\nhttpPort: 14483\nlocalPort: 14482\nsecretId: x\nsecretKey: y\n",
             ClientConfig.class);
     try {
       cfg.verify();
@@ -48,8 +46,7 @@ public class ClientConfigTest {
         new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
     ClientConfig cfg =
         yaml.readValue(
-            "remoteHost: r\nhttpPort: 14483\nhttpsPort: 14484\nlocalPort: 0\n"
-                + "secretId: x\nsecretKey: y\n",
+            "remoteHost: r\nhttpPort: 14483\nlocalPort: 0\nsecretId: x\nsecretKey: y\n",
             ClientConfig.class);
     try {
       cfg.verify();
@@ -65,8 +62,7 @@ public class ClientConfigTest {
         new com.fasterxml.jackson.dataformat.yaml.YAMLMapper();
     ClientConfig cfg =
         yaml.readValue(
-            "remoteHost: r\nhttpPort: 14483\nhttpsPort: 14484\nlocalPort: 14482\n"
-                + "secretId: ''\nsecretKey: y\n",
+            "remoteHost: r\nhttpPort: 14483\nlocalPort: 14482\nsecretId: ''\nsecretKey: y\n",
             ClientConfig.class);
     try {
       cfg.verify();

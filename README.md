@@ -16,7 +16,9 @@ A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing betwe
 
 ## Architecture
 
-`deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over two ports — one for HTTP traffic and one for HTTPS-CONNECT tunnels — using a Protobuf-framed wire format prefixed with the magic `0xDEADBEEF`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
+`deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over a **single port**: HTTP-proxy traffic is sent as a `POST` whose body carries a Protobuf-framed envelope prefixed with the magic `0xDEADBEEF`, while HTTPS tunnels use **standard HTTP CONNECT** upgraded to raw TCP via Vert.x's `HttpServerRequest.toNetSocket(...)`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp, carried uniformly in the `X-Deadbeef-Auth` header; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
+
+> **Migration note**: an earlier release used two separate ports (a `NetServer` on `httpsPort` for a bespoke protobuf-prefixed CONNECT protocol). The CONNECT path now uses standard HTTP CONNECT on the same port as the HTTP-proxy flow, so client and server must be rolled together — mixed versions are wire-incompatible.
 
 ## System Requirements
 
@@ -60,8 +62,7 @@ Example `client-config.yaml`:
 ```yaml
 # Required
 remoteHost: example.com   # remote server hostname or IP (IPv6 is fine)
-httpPort: 14483           # remote server's HTTP port
-httpsPort: 14484          # remote server's HTTPS port
+httpPort: 14483           # remote server's listening port (carries both HTTP-proxy and CONNECT)
 localPort: 14482          # local proxy port (point your browser here)
 secretId: an-id           # must match a (secretId, secretKey) pair on the server
 secretKey: a-key
@@ -69,14 +70,13 @@ secretKey: a-key
 # Optional
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver
-# httpClient:    {...}    # passthrough to io.vertx.core.http.HttpClientOptions
-# netClient:     {...}    # passthrough to io.vertx.core.net.NetClientOptions
-# localServer:   {...}    # passthrough to io.vertx.core.http.HttpServerOptions
+# httpClient:    {...}    # passthrough to io.vertx.core.http.HttpClientOptions (used for both HTTP-proxy and CONNECT)
+# localServer:   {...}    # passthrough to io.vertx.core.http.HttpServerOptions (the browser-facing port)
 ```
 
 ### Server (remote)
 
-Run the server on the remote host. Open the two listening ports (`httpPort`, `httpsPort`) in your firewall.
+Run the server on the remote host. Open the single listening port (`httpPort`) in your firewall.
 
 ```bash
 nohup java \
@@ -93,7 +93,6 @@ Example `server-config.yaml`:
 ```yaml
 # Required
 httpPort: 14483
-httpsPort: 14484
 auth:
   # one server can recognize many (secretId, secretKey) pairs;
   # the same secretId may appear multiple times to support key rotation
@@ -103,15 +102,14 @@ auth:
 # Optional
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]
-# httpClient:  {...}     # HttpClientOptions
-# httpServer:  {...}     # HttpServerOptions
-# netClient:   {...}     # NetClientOptions
-# netServer:   {...}     # NetServerOptions
+# httpClient:  {...}     # HttpClientOptions (server's outbound HTTP-proxy client)
+# httpServer:  {...}     # HttpServerOptions (the proxy listening socket)
+# netClient:   {...}     # NetClientOptions  (server's outbound TCP client for CONNECT tunnels)
 ```
 
 ## Configuration reference
 
-The `httpClient`, `httpServer`, `netClient`, `netServer`, and `localServer` blocks deserialize directly into their Vert.x option types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class can be set there — TLS, write queue sizing, connect timeouts, etc.
+The `httpClient`, `httpServer`, `netClient`, and `localServer` blocks deserialize directly into their Vert.x option types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class can be set there — TLS, write queue sizing, connect timeouts, etc.
 
 Auth-window tolerance is 15 minutes on either side of the server's wall clock; keep the two hosts loosely time-synchronized.
 

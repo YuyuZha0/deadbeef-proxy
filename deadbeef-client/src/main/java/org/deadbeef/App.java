@@ -9,16 +9,14 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
-import io.vertx.core.net.NetClient;
-import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
-import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.bootstrap.Bootstrap;
 import org.deadbeef.bootstrap.ProxyVerticle;
 import org.deadbeef.client.ClientConfig;
+import org.deadbeef.client.ConnectTunnelHandler;
 import org.deadbeef.client.Http2HttpHandler;
-import org.deadbeef.client.Http2SocketHandler;
 import org.deadbeef.client.ProxyClientRequestHandler;
+import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.route.AddressPicker;
 import org.deadbeef.util.ConsoleReporter;
 
@@ -37,7 +35,6 @@ public final class App extends ProxyVerticle<ClientConfig> {
 
   public static void main(String[] args) {
     Bootstrap.printLogo();
-    // args = new String[] {"-c", "/Users/zhaoyuyu/IdeaProjects/deadbeef-proxy/client-config.yaml"};
     Bootstrap.bootstrap(App::new, args, ClientConfig.class);
   }
 
@@ -48,23 +45,11 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 getConfig().getHttpClientOptions(),
                 () ->
                     new HttpClientOptions()
-                        .setUseAlpn(true)
-                        .setProtocolVersion(HttpVersion.HTTP_2)
-                        .setHttp2MaxPoolSize(16)
+                        .setProtocolVersion(HttpVersion.HTTP_1_1)
+                        .setMaxPoolSize(128)
                         .setTryUseCompression(true)
                         .setConnectTimeout(DEFAULT_TIMEOUT_IN_MILLS)
                         .setReadIdleTimeout(DEFAULT_TIMEOUT_IN_MILLS)));
-  }
-
-  private NetClient createNetClient() {
-    return getVertx()
-        .createNetClient(
-            getOptionsOrDefault(
-                getConfig().getNetClientOptions(),
-                () ->
-                    new NetClientOptions()
-                        .setReadIdleTimeout(DEFAULT_TIMEOUT_IN_MILLS)
-                        .setConnectTimeout(DEFAULT_TIMEOUT_IN_MILLS)));
   }
 
   private HttpServer createHttpServer() {
@@ -74,7 +59,6 @@ public final class App extends ProxyVerticle<ClientConfig> {
   }
 
   private ConsoleReporter startReporter() {
-    // hack for human friendly bytes
     ConsoleReporter consoleReporter =
         ConsoleReporter.forRegistry(metricRegistry)
             .convertDurationsTo(TimeUnit.MINUTES)
@@ -93,26 +77,17 @@ public final class App extends ProxyVerticle<ClientConfig> {
     ProxyAuthenticationGenerator proxyAuthenticationGenerator =
         new ProxyAuthenticationGenerator(config.getSecretId(), config.getSecretKey());
     HttpClient httpClient = createHttpClient();
-    NetClient netClient = createNetClient();
     HttpServer server = createHttpServer();
+    AddressPicker remotePicker = AddressPicker.ofStatic(config.getHttpPort(), config.getRemoteHost());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new Http2HttpHandler(
-                getVertx(),
-                httpClient,
-                AddressPicker.ofStatic(config.getHttpPort(), config.getRemoteHost()),
-                proxyAuthenticationGenerator,
-                metricRegistry),
-            new Http2SocketHandler(
-                getVertx(),
-                netClient,
-                AddressPicker.ofStatic(config.getHttpsPort(), config.getRemoteHost()),
-                proxyAuthenticationGenerator,
-                metricRegistry));
+                getVertx(), httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry),
+            new ConnectTunnelHandler(
+                httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry));
     server.requestHandler(requestHandler);
 
     registerCloseHook(server::close);
-    registerCloseHook(netClient::close);
     registerCloseHook(httpClient::close);
 
     server.listen(

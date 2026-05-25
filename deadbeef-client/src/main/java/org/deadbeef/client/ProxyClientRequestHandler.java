@@ -11,10 +11,10 @@ import org.deadbeef.util.HttpRequestUtils;
 public final class ProxyClientRequestHandler implements Handler<HttpServerRequest> {
 
   private final Http2HttpHandler httpHandler;
-  private final Http2SocketHandler httpsHandler;
+  private final ConnectTunnelHandler httpsHandler;
 
   public ProxyClientRequestHandler(
-      @NonNull Http2HttpHandler httpHandler, @NonNull Http2SocketHandler httpsHandler) {
+      @NonNull Http2HttpHandler httpHandler, @NonNull ConnectTunnelHandler httpsHandler) {
     this.httpHandler = httpHandler;
     this.httpsHandler = httpsHandler;
   }

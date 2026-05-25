@@ -8,7 +8,6 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetClientOptions;
-import io.vertx.core.net.NetServerOptions;
 import lombok.SneakyThrows;
 import org.junit.Test;
 
@@ -16,22 +15,18 @@ import java.util.Arrays;
 
 public class ConfigDemoGenerator {
 
-  // https://bitbucket.org/snakeyaml/snakeyaml/wiki/Documentation
-
   @Test
   public void generateClient() {
     JsonObject object = new JsonObject();
     object.put("httpPort", 14483);
-    object.put("httpsPort", 14484);
-    object.put("remoteServer", "example.com");
+    object.put("remoteHost", "example.com");
     object.put("localPort", 14482);
     object.put("secretId", "a-secret-id");
     object.put("secretKey", "a-secret-key");
     object.put("preferNativeTransport", true);
     object.put("addressResolver", Arrays.asList("8.8.8.8", "114.114.114.114"));
     object.put("httpClient", new HttpClientOptions());
-    object.put("netClient", new NetClientOptions());
-    object.put("httpServer", new HttpServerOptions());
+    object.put("localServer", new HttpServerOptions());
     printConfig(object);
   }
 
@@ -39,7 +34,6 @@ public class ConfigDemoGenerator {
   public void generateServer() {
     JsonObject object = new JsonObject();
     object.put("httpPort", 14483);
-    object.put("httpsPort", 14484);
     object.put(
         "auth",
         Lists.newArrayList(
@@ -49,15 +43,13 @@ public class ConfigDemoGenerator {
     object.put("addressResolver", Arrays.asList("8.8.8.8", "114.114.114.114"));
     object.put("httpClient", new HttpClientOptions());
     object.put("httpServer", new HttpServerOptions());
-    object.put("httpsClient", new NetClientOptions());
-    object.put("httpsServer", new NetServerOptions());
+    object.put("netClient", new NetClientOptions());
     printConfig(object);
   }
 
   @SneakyThrows
   private void printConfig(JsonObject jsonObject) {
     YAMLMapper yamlMapper = new YAMLMapperFactory().get();
-    // YAMLMapper yamlMapper = new YAMLMapper();
     yamlMapper.enable(SerializationFeature.INDENT_OUTPUT);
     String dump = yamlMapper.writeValueAsString(jsonObject);
     System.out.println(dump);

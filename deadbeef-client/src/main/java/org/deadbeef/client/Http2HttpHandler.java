@@ -109,6 +109,10 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
         .onSuccess(
             clientRequest -> {
               clientRequest.exceptionHandler(errorHandler);
+              if (contentLength < 0) {
+                // Unknown / chunked upstream body — request chunked transfer-encoding outbound.
+                clientRequest.setChunked(true);
+              }
               Buffer prefixData = Prefix.serializeToBuffer(proto);
               // Only exact 0 means empty body!
               if (contentLength == 0) {

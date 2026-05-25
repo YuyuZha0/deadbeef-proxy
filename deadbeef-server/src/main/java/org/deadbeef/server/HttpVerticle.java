@@ -4,9 +4,12 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.NetClient;
+import io.vertx.core.net.NetClientOptions;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
@@ -35,38 +38,57 @@ public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
                         .setReadIdleTimeout(DEFAULT_TIMEOUT)));
   }
 
+  private NetClient createNetClient() {
+    return getVertx()
+        .createNetClient(
+            getOptionsOrDefault(
+                getConfig().getNetClientOptions(),
+                () -> new NetClientOptions().setConnectTimeout(DEFAULT_TIMEOUT)));
+  }
+
   private HttpServer createHttpServer() {
     return getVertx()
         .createHttpServer(
             getOptionsOrDefault(
                 getConfig().getHttpServerOptions(),
-                () -> new HttpServerOptions().setUseAlpn(true).setDecompressionSupported(true)));
+                () -> new HttpServerOptions().setDecompressionSupported(true)));
   }
 
   @Override
   public void start(Promise<Void> startPromise) {
-
     ServerConfig config = getConfig();
 
     HttpClient httpClient = createHttpClient();
+    NetClient netClient = createNetClient();
     HttpServer httpServer = createHttpServer();
 
-    Handler<HttpServerRequest> requestHandler =
-        new Http2HttpHandler(
-            getVertx(),
-            httpClient,
-            ProxyAuthenticationValidator.fromEntries(config.getAuth()),
-            new DefaultPipeFactory());
-    httpServer.requestHandler(requestHandler);
+    ProxyAuthenticationValidator validator =
+        ProxyAuthenticationValidator.fromEntries(config.getAuth());
+    DefaultPipeFactory pipeFactory = new DefaultPipeFactory();
+
+    Handler<HttpServerRequest> proxyHandler =
+        new Http2HttpHandler(getVertx(), httpClient, validator, pipeFactory);
+    Handler<HttpServerRequest> connectHandler =
+        new ServerConnectHandler(netClient, validator, pipeFactory);
+
+    httpServer.requestHandler(
+        request -> {
+          if (request.method() == HttpMethod.CONNECT) {
+            connectHandler.handle(request);
+          } else {
+            proxyHandler.handle(request);
+          }
+        });
 
     registerCloseHook(httpServer::close);
     registerCloseHook(httpClient::close);
+    registerCloseHook(netClient::close);
 
     httpServer.listen(
         config.getHttpPort(),
         result -> {
           if (result.succeeded()) {
-            log.info("Start HTTP handler listening on port: {}", result.result().actualPort());
+            log.info("Start proxy server listening on port: {}", result.result().actualPort());
             startPromise.tryComplete();
           } else {
             startPromise.tryFail(result.cause());

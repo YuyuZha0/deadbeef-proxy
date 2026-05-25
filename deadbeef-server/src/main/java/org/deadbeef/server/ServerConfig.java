@@ -6,7 +6,6 @@ import com.google.common.base.Preconditions;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.net.NetClientOptions;
-import io.vertx.core.net.NetServerOptions;
 import lombok.Getter;
 import org.deadbeef.bootstrap.ProxyConfig;
 
@@ -24,8 +23,6 @@ public final class ServerConfig implements ProxyConfig {
 
   private int httpPort;
 
-  private int httpsPort;
-
   @JsonProperty("httpClient")
   private HttpClientOptions httpClientOptions;
 
@@ -35,13 +32,9 @@ public final class ServerConfig implements ProxyConfig {
   @JsonProperty("netClient")
   private NetClientOptions netClientOptions;
 
-  @JsonProperty("netServer")
-  private NetServerOptions netServerOptions;
-
   @Override
   public void verify() {
     ProxyConfig.verifyPort(httpPort, "httpPort");
-    ProxyConfig.verifyPort(httpsPort, "httpsPort");
 
     Preconditions.checkArgument(auth != null && !auth.isEmpty(), "Empty auth list!");
   }

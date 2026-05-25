@@ -156,6 +156,10 @@ public final class Http2HttpHandler implements Handler<HttpServerRequest> {
       serverResponse.putHeader(
           HttpHeaderNames.CONTENT_LENGTH,
           Long.toString(Prefix.serializeToBufferSize(response) + contentLength));
+    } else {
+      // Upstream is chunked / unknown-length; fall back to chunked transfer-encoding so the
+      // response works under HTTP/1.1 without Content-Length.
+      serverResponse.setChunked(true);
     }
   }
 
