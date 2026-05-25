@@ -87,7 +87,7 @@ public final class HttpVerticle extends ProxyVerticle<ServerConfig> {
     registerCloseHook(netClient::close);
 
     httpServer.listen(
-        config.getHttpPort(),
+        config.getPort(),
         result -> {
           if (result.succeeded()) {
             log.info("Start proxy server listening on port: {}", result.result().actualPort());

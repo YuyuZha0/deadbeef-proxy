@@ -18,7 +18,7 @@ public class ConfigDemoGenerator {
   @Test
   public void generateClient() {
     JsonObject object = new JsonObject();
-    object.put("httpPort", 14483);
+    object.put("remotePort", 14483);
     object.put("remoteHost", "example.com");
     object.put("localPort", 14482);
     object.put("secretId", "a-secret-id");
@@ -33,7 +33,7 @@ public class ConfigDemoGenerator {
   @Test
   public void generateServer() {
     JsonObject object = new JsonObject();
-    object.put("httpPort", 14483);
+    object.put("port", 14483);
     object.put(
         "auth",
         Lists.newArrayList(

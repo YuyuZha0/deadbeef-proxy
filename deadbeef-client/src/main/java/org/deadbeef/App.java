@@ -78,7 +78,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
         new ProxyAuthenticationGenerator(config.getSecretId(), config.getSecretKey());
     HttpClient httpClient = createHttpClient();
     HttpServer server = createHttpServer();
-    AddressPicker remotePicker = AddressPicker.ofStatic(config.getHttpPort(), config.getRemoteHost());
+    AddressPicker remotePicker = AddressPicker.ofStatic(config.getRemotePort(), config.getRemoteHost());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new HttpProxyHandler(

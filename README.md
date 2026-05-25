@@ -70,7 +70,7 @@ Example `client-config.yaml`:
 ```yaml
 # Required
 remoteHost: example.com   # remote server hostname or IP (IPv6 is fine)
-httpPort: 14483           # remote server's listening port (carries both HTTP-proxy and CONNECT)
+remotePort: 14483         # remote server's listening port (carries both HTTP-proxy and CONNECT)
 localPort: 14482          # local proxy port (point your browser here)
 secretId: an-id           # must match a (secretId, secretKey) pair on the server
 secretKey: a-key
@@ -84,7 +84,7 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to 
 
 ### Server (remote)
 
-Run the server on the remote host. Open the single listening port (`httpPort`) in your firewall.
+Run the server on the remote host. Open the single listening port (`port`) in your firewall.
 
 ```bash
 nohup java \
@@ -100,7 +100,7 @@ Example `server-config.yaml`:
 
 ```yaml
 # Required
-httpPort: 14483
+port: 14483
 auth:
   # one server can recognize many (secretId, secretKey) pairs;
   # the same secretId may appear multiple times to support key rotation

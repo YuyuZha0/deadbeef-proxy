@@ -21,7 +21,7 @@ public final class ServerConfig implements ProxyConfig {
 
   private List<AuthTuple> auth;
 
-  private int httpPort;
+  private int port;
 
   @JsonProperty("httpClient")
   private HttpClientOptions httpClientOptions;
@@ -34,7 +34,7 @@ public final class ServerConfig implements ProxyConfig {
 
   @Override
   public void verify() {
-    ProxyConfig.verifyPort(httpPort, "httpPort");
+    ProxyConfig.verifyPort(port, "port");
 
     Preconditions.checkArgument(auth != null && !auth.isEmpty(), "Empty auth list!");
   }

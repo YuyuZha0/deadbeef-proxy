@@ -15,7 +15,7 @@ public final class ClientConfig implements ProxyConfig {
 
   private List<String> addressResolver;
   private String remoteHost;
-  private int httpPort;
+  private int remotePort;
   private int localPort;
   private String secretId;
   private String secretKey;
@@ -29,7 +29,7 @@ public final class ClientConfig implements ProxyConfig {
   @Override
   public void verify() {
     ProxyConfig.verifyPort(localPort, "localPort");
-    ProxyConfig.verifyPort(httpPort, "httpPort");
+    ProxyConfig.verifyPort(remotePort, "remotePort");
 
     ProxyConfig.verifyStringNotBlank(remoteHost, "remoteHost");
     ProxyConfig.verifyStringNotBlank(secretId, "secretId");
