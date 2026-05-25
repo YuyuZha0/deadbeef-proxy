@@ -318,6 +318,54 @@ public class ProxyStreamPrefixVisitorTest {
   }
 
   @Test
+  public void streamEndingBeforePrefixFailsPromise(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    vertx.runOnContext(
+        v -> {
+          FakeReadStream src = new FakeReadStream();
+          new ProxyStreamPrefixVisitor<CollectingWriteStream>(vertx)
+              .visit(src)
+              .onSuccess(pa -> ctx.fail("should have failed"))
+              .onFailure(
+                  cause -> {
+                    ctx.assertTrue(
+                        cause.getMessage().contains("Stream ended"),
+                        "actual: " + cause.getMessage());
+                    done.complete();
+                  });
+          src.end();
+        });
+  }
+
+  @Test
+  public void customBodyLengthLimitIsEnforced(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    vertx.runOnContext(
+        v -> {
+          FakeReadStream src = new FakeReadStream();
+          // Limit set to 10 bytes; sending a header that asks for 11.
+          new ProxyStreamPrefixVisitor<CollectingWriteStream>(vertx, new DefaultPipeFactory(), 10)
+              .visit(src)
+              .onSuccess(pa -> ctx.fail("should have failed"))
+              .onFailure(
+                  cause -> {
+                    ctx.assertTrue(
+                        cause.getMessage().contains("Illegal prefix len"),
+                        "actual: " + cause.getMessage());
+                    done.complete();
+                  });
+          src.emit(rawHeader(Prefix.MAGIC, 11));
+        });
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void rejectsZeroBodyLengthLimit() {
+    new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx(), new DefaultPipeFactory(), 0);
+  }
+
+  @Test
   public void srcExceptionFailsTheFuture(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();

@@ -4,6 +4,7 @@ import com.google.common.base.Strings;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
+import io.netty.util.ReferenceCountUtil;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
@@ -17,23 +18,35 @@ import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.WriteStream;
+import java.util.function.BiConsumer;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.Utils;
 
-import java.util.function.BiConsumer;
-
 @Slf4j
 public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
+  /** Default upper bound (8 MiB) for the framed body length. */
+  public static final int DEFAULT_BODY_LENGTH_LIMIT = 1 << 23;
+
   private final VertxInternal vertx;
   private final PipeFactory pipeFactory;
+  private final int bodyLengthLimit;
 
-  public ProxyStreamPrefixVisitor(@NonNull Vertx vertx, @NonNull PipeFactory pipeFactory) {
+  public ProxyStreamPrefixVisitor(
+      @NonNull Vertx vertx, @NonNull PipeFactory pipeFactory, int bodyLengthLimit) {
+    if (bodyLengthLimit <= 0) {
+      throw new IllegalArgumentException("bodyLengthLimit must be positive: " + bodyLengthLimit);
+    }
     this.vertx = (VertxInternal) vertx;
     this.pipeFactory = pipeFactory;
+    this.bodyLengthLimit = bodyLengthLimit;
+  }
+
+  public ProxyStreamPrefixVisitor(@NonNull Vertx vertx, @NonNull PipeFactory pipeFactory) {
+    this(vertx, pipeFactory, DEFAULT_BODY_LENGTH_LIMIT);
   }
 
   public ProxyStreamPrefixVisitor(Vertx vertx) {
@@ -52,7 +65,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     if (log.isDebugEnabled()) {
       log.debug("Start resolving prefix on: {}", src);
     }
-    PrefixBuffer prefixBuffer = new PrefixBuffer(src);
+    PrefixBuffer prefixBuffer = new PrefixBuffer(src, bodyLengthLimit);
     prefixBuffer.parsePrefix(
         ar -> {
           if (ar.succeeded()) {
@@ -65,12 +78,14 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
                           try {
                             copy(src, writeStream, prefixBuffer, whenWritingFinished);
                           } catch (Throwable cause) {
+                            prefixBuffer.release();
                             whenWritingFinished.handle(Future.failedFuture(cause));
                           }
                         });
             handler.handle(Future.succeededFuture(new PrefixAndAction<>(prefix, action)));
           } else {
             Utils.clearHandlers(src);
+            prefixBuffer.release();
             handler.handle(Future.failedFuture(ar.cause()));
           }
         });
@@ -83,8 +98,11 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       Handler<AsyncResult<Void>> handler) {
 
     Buffer remaining = prefixBuffer.readRemaining();
+    boolean streamEnded = prefixBuffer.isStreamEnded();
     Utils.clearHandlers(src);
-    if (remaining.length() == 0 && prefixBuffer.isStreamEnded()) {
+    prefixBuffer.release();
+
+    if (remaining.length() == 0 && streamEnded) {
       handler.handle(Future.succeededFuture());
       return;
     }
@@ -94,19 +112,20 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       src.resume();
       return;
     }
-    if (prefixBuffer.isStreamEnded()) {
+    if (streamEnded) {
       dst.write(remaining, handler);
       return;
     }
+    Handler<AsyncResult<Void>> oneShot = Utils.atMostOnce(handler);
     dst.write(
         remaining,
         ar -> {
           if (ar.failed()) {
-            handler.handle(ar);
+            oneShot.handle(ar);
           }
         });
     Pipe<Buffer> pipe = pipeFactory.newPipe(src);
-    pipe.to(dst, handler);
+    pipe.to(dst, oneShot);
     src.resume();
   }
 
@@ -114,25 +133,28 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
 
     private static final Buffer EMPTY_BUFFER = Buffer.buffer(Unpooled.EMPTY_BUFFER);
 
-    private static final int BODY_LENGTH_LIMIT = 1 << 23; // 8M
-    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.heapBuffer(0xff);
-
+    private final ByteBuf tempBuf = VertxByteBufAllocator.DEFAULT.buffer(0xff);
     private final ReadStream<Buffer> src;
-
     private final Promise<Buffer> promise;
+    private final int bodyLengthLimit;
     private int bodyLen = -1;
+    private boolean released;
 
     @Getter private volatile boolean streamEnded;
 
-    PrefixBuffer(ReadStream<Buffer> src) {
+    PrefixBuffer(ReadStream<Buffer> src, int bodyLengthLimit) {
       this.promise = Promise.promise();
       this.src = src;
+      this.bodyLengthLimit = bodyLengthLimit;
       src.endHandler(
           v -> {
             if (log.isDebugEnabled()) {
               log.debug("[ReadStream: `{}`] ended!", src);
             }
             PrefixBuffer.this.streamEnded = true;
+            // If the prefix never resolved, surface a clean failure instead of hanging.
+            promise.tryFail(
+                new VertxException("Stream ended before prefix was fully received", true));
           });
       src.exceptionHandler(promise::tryFail);
     }
@@ -144,14 +166,14 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     private void expectMagicAndLength() {
       int magic = tempBuf.readInt();
       if (magic != Prefix.MAGIC) {
-        fetal(
+        fatal(
             "Magic not match, expect: 0x%s, but found: 0x%s!",
             Integer.toHexString(Prefix.MAGIC), Integer.toHexString(magic));
         return;
       }
       int bodyLen = tempBuf.readInt();
-      if (bodyLen <= 0 || bodyLen > BODY_LENGTH_LIMIT) {
-        fetal("Illegal prefix len: %s", bodyLen);
+      if (bodyLen <= 0 || bodyLen > bodyLengthLimit) {
+        fatal("Illegal prefix len: %s", bodyLen);
         return;
       }
       this.bodyLen = bodyLen;
@@ -179,7 +201,7 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
     @Override
     public void handle(Buffer event) {
       if (log.isDebugEnabled()) {
-        log.info(
+        log.debug(
             "Incoming bytes:[length={}]{}{}",
             event.length(),
             Constants.lineSeparator(),
@@ -196,12 +218,12 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
       }
     }
 
-    void fetal(Throwable cause) {
+    void fatal(Throwable cause) {
       promise.tryFail(cause);
     }
 
-    void fetal(String msg, Object... args) {
-      fetal(new VertxException(Strings.lenientFormat(msg, args), true));
+    void fatal(String msg, Object... args) {
+      fatal(new VertxException(Strings.lenientFormat(msg, args), true));
     }
 
     Buffer readRemaining() {
@@ -213,6 +235,14 @@ public final class ProxyStreamPrefixVisitor<W extends WriteStream<Buffer>> {
         return Buffer.buffer(tempBuf.readBytes(remainingBytes));
       } else {
         return EMPTY_BUFFER;
+      }
+    }
+
+    /** Releases the pooled scratch buffer. Idempotent. */
+    void release() {
+      if (!released) {
+        released = true;
+        ReferenceCountUtil.release(tempBuf);
       }
     }
   }
