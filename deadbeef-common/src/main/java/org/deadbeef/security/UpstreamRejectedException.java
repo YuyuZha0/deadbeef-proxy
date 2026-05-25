@@ -10,7 +10,13 @@ public final class UpstreamRejectedException extends RuntimeException {
   private final String reason;
 
   public UpstreamRejectedException(String host, InetAddress address, String reason) {
-    super("Upstream " + host + " (" + address.getHostAddress() + ") rejected: " + reason);
+    // Control-flow signal carried via Future.failedFuture; the stack trace would point at the
+    // resolver every time and only add cost on every denied request.
+    super(
+        "Upstream " + host + " (" + address.getHostAddress() + ") rejected: " + reason,
+        null,
+        false,
+        false);
     this.host = host;
     this.address = address;
     this.reason = reason;
