@@ -48,7 +48,7 @@ public class ConnectTunnelHandlerTest {
             httpClient,
             AddressPicker.ofStatic(remotePort, "127.0.0.1"),
             new ProxyAuthenticationGenerator("id", "key"),
-            new MetricRegistry());
+            new org.deadbeef.metrics.ProxyMetrics(new MetricRegistry()));
     HttpServer server = vertx.createHttpServer();
     server.requestHandler(handler);
     return server.listen(0).map(server);

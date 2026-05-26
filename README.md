@@ -78,6 +78,7 @@ secretKey: a-key
 # Optional
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver
+adminPort: 18080          # opens the live metrics dashboard on http://127.0.0.1:18080 (omit to disable)
 # httpClient:    {...}    # passthrough to io.vertx.core.http.HttpClientOptions (used for both HTTP-proxy and CONNECT)
 # localServer:   {...}    # passthrough to io.vertx.core.http.HttpServerOptions (the browser-facing port)
 ```
@@ -114,6 +115,17 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]
 # httpServer:  {...}     # HttpServerOptions (the proxy listening socket)
 # netClient:   {...}     # NetClientOptions  (server's outbound TCP client for CONNECT tunnels)
 ```
+
+### Live metrics dashboard (client)
+
+When `adminPort` is set, the client opens a tiny HTTP server bound to `127.0.0.1:<adminPort>` (loopback only — never reachable from the LAN) that serves a single-page metrics dashboard. Open `http://127.0.0.1:<adminPort>/` in a browser; the page polls `/api/metrics` every 2 seconds and renders ECharts-based throughput / latency / status-code visualisations.
+
+Dashboard dependencies are loaded from public CDNs (`cdn.jsdelivr.net` for ECharts and Pico CSS) — no npm, no build pipeline, no bundled assets beyond a single `dashboard.html` on the classpath. Data lives in memory only; closing the page resets the rolling charts. Omit `adminPort` to disable the endpoint entirely.
+
+Tracked metrics (all under the `proxy.*` namespace):
+
+- **HTTP-proxy flow** — `requests.total`, `requests.failed`, `requests.in_flight`, `responses.{2xx,3xx,4xx,5xx}`, `request.duration` (timer), `bytes.up`, `bytes.down`.
+- **HTTPS-tunnel flow** — `tunnels.opened`, `tunnels.failed`, `tunnels.active`, `connect.duration` (timer), `bytes.up`, `bytes.down`.
 
 ## Configuration reference
 

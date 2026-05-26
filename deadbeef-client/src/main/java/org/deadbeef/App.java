@@ -9,18 +9,18 @@ import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.bootstrap.Bootstrap;
 import org.deadbeef.bootstrap.ProxyVerticle;
 import org.deadbeef.client.ClientConfig;
 import org.deadbeef.client.ConnectTunnelHandler;
 import org.deadbeef.client.HttpProxyHandler;
+import org.deadbeef.client.MetricsDashboardServer;
 import org.deadbeef.client.ProxyClientRequestHandler;
-import org.deadbeef.auth.ProxyAuthenticationGenerator;
+import org.deadbeef.metrics.ProxyMetrics;
 import org.deadbeef.route.AddressPicker;
-import org.deadbeef.util.ConsoleReporter;
-
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public final class App extends ProxyVerticle<ClientConfig> {
@@ -28,6 +28,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
   private static final int DEFAULT_TIMEOUT_IN_MILLS = (int) TimeUnit.SECONDS.toMillis(10);
 
   private final MetricRegistry metricRegistry = new MetricRegistry();
+  private final ProxyMetrics proxyMetrics = new ProxyMetrics(metricRegistry);
 
   public App(ClientConfig config) {
     super(config);
@@ -58,19 +59,6 @@ public final class App extends ProxyVerticle<ClientConfig> {
             getOptionsOrDefault(getConfig().getHttpServerOptions(), HttpServerOptions::new));
   }
 
-  private ConsoleReporter startReporter() {
-    ConsoleReporter consoleReporter =
-        ConsoleReporter.forRegistry(metricRegistry)
-            .convertDurationsTo(TimeUnit.MINUTES)
-            .convertRatesTo(TimeUnit.SECONDS)
-            .scheduleOn(getVertx().nettyEventLoopGroup().next())
-            .shutdownExecutorOnStop(false)
-            .build();
-    consoleReporter.start(1, 5, TimeUnit.MINUTES);
-    log.info("Console reporter started.");
-    return consoleReporter;
-  }
-
   @Override
   public void start(Promise<Void> startPromise) {
     ClientConfig config = getConfig();
@@ -78,13 +66,14 @@ public final class App extends ProxyVerticle<ClientConfig> {
         new ProxyAuthenticationGenerator(config.getSecretId(), config.getSecretKey());
     HttpClient httpClient = createHttpClient();
     HttpServer server = createHttpServer();
-    AddressPicker remotePicker = AddressPicker.ofStatic(config.getRemotePort(), config.getRemoteHost());
+    AddressPicker remotePicker =
+        AddressPicker.ofStatic(config.getRemotePort(), config.getRemoteHost());
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new HttpProxyHandler(
-                getVertx(), httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry),
+                getVertx(), httpClient, remotePicker, proxyAuthenticationGenerator, proxyMetrics),
             new ConnectTunnelHandler(
-                httpClient, remotePicker, proxyAuthenticationGenerator, metricRegistry));
+                httpClient, remotePicker, proxyAuthenticationGenerator, proxyMetrics));
     server.requestHandler(requestHandler);
 
     registerCloseHook(server::close);
@@ -100,7 +89,13 @@ public final class App extends ProxyVerticle<ClientConfig> {
             startPromise.tryFail(result.cause());
           }
         });
-    ConsoleReporter consoleReporter = startReporter();
-    registerCloseHookSync(consoleReporter::close);
+
+    Integer adminPort = config.getAdminPort();
+    if (adminPort != null) {
+      MetricsDashboardServer dashboard =
+          new MetricsDashboardServer(getVertx(), metricRegistry, adminPort);
+      dashboard.start();
+      registerCloseHook(dashboard::close);
+    }
   }
 }

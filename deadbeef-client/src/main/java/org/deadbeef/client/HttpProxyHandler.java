@@ -1,6 +1,6 @@
 package org.deadbeef.client;
 
-import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -16,22 +16,22 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
+import java.io.IOException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
+import org.deadbeef.metrics.ProxyMetrics;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.route.AddressPicker;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
-import org.deadbeef.streams.StreamType;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
-
-import java.io.IOException;
+import org.deadbeef.util.Utils;
 
 @Slf4j
 public final class HttpProxyHandler implements Handler<HttpServerRequest> {
@@ -46,20 +46,21 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
   private final AddressPicker addressPicker;
 
   private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
+  private final ProxyMetrics metrics;
 
   public HttpProxyHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
       @NonNull AddressPicker addressPicker,
       @NonNull ProxyAuthenticationGenerator generator,
-      @NonNull MetricRegistry metricRegistry) {
+      @NonNull ProxyMetrics metrics) {
     this.proxyStreamPrefixVisitor =
-        new ProxyStreamPrefixVisitor<>(
-            vertx, new MetricPipeFactory(metricRegistry, StreamType.HTTP_DOWN));
+        new ProxyStreamPrefixVisitor<>(vertx, new MetricPipeFactory(metrics.httpBytesDown));
     this.httpClient = httpClient;
     this.addressPicker = addressPicker;
     this.proxyAuthenticationGenerator = generator;
-    this.pipeFactory = new MetricPipeFactory(metricRegistry, StreamType.HTTP_UP, true, true);
+    this.metrics = metrics;
+    this.pipeFactory = new MetricPipeFactory(metrics.httpBytesUp, true, true);
   }
 
   private boolean should100Continue(HttpServerRequest request) {
@@ -89,6 +90,16 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
     if (!should100Continue(serverRequest)) {
       return;
     }
+    metrics.httpRequestsTotal.inc();
+    metrics.httpInFlightInc();
+    Timer.Context timerCtx = metrics.httpRequestDuration.time();
+    Handler<Void> finishHandler =
+        Utils.atMostOnce(
+            v -> {
+              timerCtx.stop();
+              metrics.httpInFlightDec();
+            });
+
     long contentLength = HttpRequestUtils.contentLength(serverRequest.headers());
     HttpProto.Request proto = httpServerRequestEncoder.apply(serverRequest);
     if (log.isDebugEnabled()) {
@@ -103,7 +114,18 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
     serverRequest.pause();
     HttpServerResponse serverResponse = serverRequest.response();
-    Handler<Throwable> errorHandler = HttpRequestUtils.createErrorHandler(serverResponse);
+    Handler<Throwable> originalErrorHandler = HttpRequestUtils.createErrorHandler(serverResponse);
+    Handler<Throwable> errorHandler =
+        Utils.atMostOnce(
+            cause -> {
+              metrics.httpRequestsFailed.inc();
+              finishHandler.handle(null);
+              originalErrorHandler.handle(cause);
+            });
+
+    serverResponse.closeHandler(finishHandler);
+    serverResponse.endHandler(finishHandler);
+
     httpClient
         .request(requestOptions)
         .onSuccess(
@@ -159,6 +181,9 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
           clientResponse.headers());
     }
     if (clientResponse.statusCode() != HttpResponseStatus.OK.code()) {
+      // The remote proxy itself rejected — surface its status to the browser. Count as failure
+      // (not as a bucketed browser-facing status, since the upstream's status is the real signal).
+      metrics.httpRequestsFailed.inc();
       serverResponse
           .setStatusCode(clientResponse.statusCode())
           .setStatusMessage(clientResponse.statusMessage());
@@ -181,6 +206,9 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
               }
               if (log.isDebugEnabled()) {
                 log.debug("{} :{}{}", Constants.leftArrow(), Constants.lineSeparator(), response);
+              }
+              if (response.hasStatusCode()) {
+                metrics.recordHttpStatus(response.getStatusCode());
               }
               setupResponse(serverResponse, response);
               prefixAndAction.accept(

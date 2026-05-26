@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>deadbeef-proxy · metrics</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    :root { --pico-spacing: 0.6rem; }
+    body { padding: 1rem 1.5rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    .meta { display: flex; align-items: center; gap: 1rem; font-size: 0.85rem; color: var(--pico-muted-color); margin-bottom: 1rem; }
+    .meta label { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+    .card { padding: 0.75rem 1rem; border: 1px solid var(--pico-muted-border-color); border-radius: 0.5rem; }
+    .card .label { font-size: 0.75rem; text-transform: uppercase; color: var(--pico-muted-color); letter-spacing: 0.04em; }
+    .card .value { font-size: 1.75rem; font-weight: 600; margin-top: 0.15rem; font-variant-numeric: tabular-nums; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 800px) { .charts { grid-template-columns: 1fr; } }
+    .chart-card { padding: 0.5rem; border: 1px solid var(--pico-muted-border-color); border-radius: 0.5rem; }
+    .chart-card h2 { font-size: 0.95rem; margin: 0 0 0.25rem 0.5rem; }
+    .chart { height: 260px; }
+  </style>
+</head>
+<body>
+  <h1>deadbeef-proxy · metrics</h1>
+  <div class="meta">
+    <span id="last-refresh">waiting for first sample…</span>
+    <label><input type="checkbox" id="auto" checked /> auto-refresh (2s)</label>
+    <a href="/api/metrics" target="_blank">/api/metrics</a>
+  </div>
+
+  <section class="cards">
+    <div class="card"><div class="label">HTTP in-flight</div>      <div class="value" id="card-http-inflight">—</div></div>
+    <div class="card"><div class="label">HTTPS active tunnels</div><div class="value" id="card-https-active">—</div></div>
+    <div class="card"><div class="label">HTTP requests (total)</div> <div class="value" id="card-http-total">—</div></div>
+    <div class="card"><div class="label">HTTPS tunnels (opened)</div><div class="value" id="card-https-total">—</div></div>
+    <div class="card"><div class="label">HTTP failures</div>      <div class="value" id="card-http-failed">—</div></div>
+    <div class="card"><div class="label">HTTPS failures</div>     <div class="value" id="card-https-failed">—</div></div>
+  </section>
+
+  <section class="charts">
+    <div class="chart-card"><h2>Throughput (1-min rate)</h2>   <div id="chart-throughput" class="chart"></div></div>
+    <div class="chart-card"><h2>Status codes</h2>             <div id="chart-status" class="chart"></div></div>
+    <div class="chart-card"><h2>HTTP request latency (ms)</h2><div id="chart-http-latency" class="chart"></div></div>
+    <div class="chart-card"><h2>HTTPS connect latency (ms)</h2><div id="chart-https-latency" class="chart"></div></div>
+  </section>
+
+<script>
+(() => {
+  const POLL_MS = 2000;
+  const WINDOW = 150; // ~5 min at 2s
+
+  const ringPush = (arr, value) => {
+    arr.push(value);
+    while (arr.length > WINDOW) arr.shift();
+  };
+
+  // Rolling buffers
+  const series = {
+    t: [],
+    httpUp: [], httpDown: [], httpsUp: [], httpsDown: [],
+    httpP50: [], httpP95: [], httpP99: [],
+    httpsP50: [], httpsP95: [], httpsP99: [],
+  };
+
+  const charts = {
+    throughput: echarts.init(document.getElementById('chart-throughput')),
+    status:     echarts.init(document.getElementById('chart-status')),
+    httpLat:    echarts.init(document.getElementById('chart-http-latency')),
+    httpsLat:   echarts.init(document.getElementById('chart-https-latency')),
+  };
+  window.addEventListener('resize', () => {
+    Object.values(charts).forEach(c => c.resize());
+  });
+
+  const fmtBytesPerSec = v => {
+    if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(2) + ' MB/s';
+    if (v >= 1024)        return (v / 1024).toFixed(1) + ' KB/s';
+    return v.toFixed(0) + ' B/s';
+  };
+
+  const baseLineOptions = (yLabelFormatter) => ({
+    grid: { left: 50, right: 20, top: 30, bottom: 30 },
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, textStyle: { fontSize: 11 } },
+    xAxis: { type: 'category', data: [], axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { fontSize: 10, formatter: yLabelFormatter } },
+  });
+
+  const renderThroughput = () => {
+    charts.throughput.setOption({
+      ...baseLineOptions(fmtBytesPerSec),
+      xAxis: { type: 'category', data: series.t, axisLabel: { fontSize: 10 } },
+      tooltip: { trigger: 'axis', valueFormatter: fmtBytesPerSec },
+      series: [
+        { name: 'http ↑',  type: 'line', showSymbol: false, data: series.httpUp },
+        { name: 'http ↓',  type: 'line', showSymbol: false, data: series.httpDown },
+        { name: 'https ↑', type: 'line', showSymbol: false, data: series.httpsUp },
+        { name: 'https ↓', type: 'line', showSymbol: false, data: series.httpsDown },
+      ],
+    });
+  };
+
+  const renderLatency = (chart, p50, p95, p99) => {
+    chart.setOption({
+      ...baseLineOptions(v => v.toFixed(0)),
+      xAxis: { type: 'category', data: series.t, axisLabel: { fontSize: 10 } },
+      tooltip: { trigger: 'axis', valueFormatter: v => (v == null ? '—' : v.toFixed(2) + ' ms') },
+      series: [
+        { name: 'p50', type: 'line', showSymbol: false, data: p50 },
+        { name: 'p95', type: 'line', showSymbol: false, data: p95 },
+        { name: 'p99', type: 'line', showSymbol: false, data: p99 },
+      ],
+    });
+  };
+
+  const renderStatus = (counters) => {
+    const buckets = ['2xx', '3xx', '4xx', '5xx'];
+    const vals = buckets.map(b => counters['proxy.http.responses.' + b] || 0);
+    charts.status.setOption({
+      grid: { left: 50, right: 20, top: 20, bottom: 30 },
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: buckets },
+      yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+      series: [{
+        type: 'bar',
+        data: vals.map((v, i) => ({
+          value: v,
+          itemStyle: { color: ['#4ade80','#60a5fa','#fbbf24','#f87171'][i] },
+        })),
+      }],
+    });
+  };
+
+  const setCard = (id, value) => {
+    document.getElementById(id).textContent = value == null ? '—' : value;
+  };
+
+  const tickLabel = () => {
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  };
+
+  const update = (snap) => {
+    const c = snap.counters || {};
+    const g = snap.gauges || {};
+    const m = snap.meters || {};
+    const t = snap.timers || {};
+
+    // Cards
+    setCard('card-http-inflight',  g['proxy.http.requests.in_flight'] ?? 0);
+    setCard('card-https-active',   g['proxy.https.tunnels.active'] ?? 0);
+    setCard('card-http-total',     c['proxy.http.requests.total'] ?? 0);
+    setCard('card-https-total',    c['proxy.https.tunnels.opened'] ?? 0);
+    setCard('card-http-failed',    c['proxy.http.requests.failed'] ?? 0);
+    setCard('card-https-failed',   c['proxy.https.tunnels.failed'] ?? 0);
+
+    // Throughput series — bytes/sec via the meters' 1-min rate
+    const httpUpRate    = (m['proxy.http.bytes.up']   || {}).m1 || 0;
+    const httpDownRate  = (m['proxy.http.bytes.down'] || {}).m1 || 0;
+    const httpsUpRate   = (m['proxy.https.bytes.up']  || {}).m1 || 0;
+    const httpsDownRate = (m['proxy.https.bytes.down']|| {}).m1 || 0;
+
+    ringPush(series.t, tickLabel());
+    ringPush(series.httpUp,    httpUpRate);
+    ringPush(series.httpDown,  httpDownRate);
+    ringPush(series.httpsUp,   httpsUpRate);
+    ringPush(series.httpsDown, httpsDownRate);
+
+    const httpReq = t['proxy.http.request.duration'] || {};
+    ringPush(series.httpP50, httpReq.p50 ?? 0);
+    ringPush(series.httpP95, httpReq.p95 ?? 0);
+    ringPush(series.httpP99, httpReq.p99 ?? 0);
+
+    const httpsConn = t['proxy.https.connect.duration'] || {};
+    ringPush(series.httpsP50, httpsConn.p50 ?? 0);
+    ringPush(series.httpsP95, httpsConn.p95 ?? 0);
+    ringPush(series.httpsP99, httpsConn.p99 ?? 0);
+
+    renderThroughput();
+    renderStatus(c);
+    renderLatency(charts.httpLat,  series.httpP50,  series.httpP95,  series.httpP99);
+    renderLatency(charts.httpsLat, series.httpsP50, series.httpsP95, series.httpsP99);
+
+    document.getElementById('last-refresh').textContent = 'last refresh: ' + tickLabel();
+  };
+
+  const poll = async () => {
+    try {
+      const r = await fetch('/api/metrics', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      update(await r.json());
+    } catch (e) {
+      document.getElementById('last-refresh').textContent = 'fetch failed: ' + e.message;
+    }
+  };
+
+  let timer = null;
+  const start = () => { if (!timer) { poll(); timer = setInterval(poll, POLL_MS); } };
+  const stop  = () => { if (timer)  { clearInterval(timer); timer = null; } };
+
+  document.getElementById('auto').addEventListener('change', e => {
+    if (e.target.checked) start(); else stop();
+  });
+  start();
+})();
+</script>
+</body>
+</html>

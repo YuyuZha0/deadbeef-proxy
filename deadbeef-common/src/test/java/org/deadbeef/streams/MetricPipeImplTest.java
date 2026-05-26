@@ -32,7 +32,7 @@ public class MetricPipeImplTest {
         v -> {
           MetricRegistry registry = new MetricRegistry();
           MetricPipeFactory factory =
-              new MetricPipeFactory(registry, StreamType.HTTP_DOWN, false, false);
+              new MetricPipeFactory(registry.meter("test.bytes.down"), false, false);
 
           FakeReadStream src = new FakeReadStream();
           CollectingWriteStream dst = new CollectingWriteStream();
@@ -46,10 +46,7 @@ public class MetricPipeImplTest {
                     testContext.assertEquals(2, dst.received.size());
                     testContext.assertEquals("hello", dst.received.get(0).toString());
                     testContext.assertEquals("world", dst.received.get(1).toString());
-                    testContext.assertEquals(
-                        10L, registry.meter("HttpDown[BytesRead]").getCount());
-                    testContext.assertEquals(
-                        1L, registry.counter("HttpDown[NewPipeCnt]").getCount());
+                    testContext.assertEquals(10L, registry.meter("test.bytes.down").getCount());
                     async.countDown();
                   });
 
@@ -67,7 +64,7 @@ public class MetricPipeImplTest {
         v -> {
           MetricRegistry registry = new MetricRegistry();
           MetricPipeFactory factory =
-              new MetricPipeFactory(registry, StreamType.HTTPS_UP, false, false);
+              new MetricPipeFactory(registry.meter("test.bytes.up"), false, false);
 
           FakeReadStream src = new FakeReadStream();
           CollectingWriteStream dst = new CollectingWriteStream();

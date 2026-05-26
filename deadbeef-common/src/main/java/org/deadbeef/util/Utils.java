@@ -16,6 +16,10 @@ public final class Utils {
     return new AtMostOnceHandler<>(original);
   }
 
+  public static <T> Handler<T> atMostOnce(Handler<? super T> original, boolean verbose) {
+    return new AtMostOnceHandler<>(original, verbose);
+  }
+
   public static void exchangeCloseHook(@NonNull NetSocket alice, @NonNull NetSocket bob) {
     Preconditions.checkArgument(alice != bob);
     alice.closeHandler(
