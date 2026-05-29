@@ -65,6 +65,9 @@
     <div class="chart-card"><h2>Status codes</h2>
         <div class="chart" id="chart-status"></div>
     </div>
+    <div class="chart-card"><h2>Direct vs remote</h2>
+        <div class="chart" id="chart-routing"></div>
+    </div>
     <div class="chart-card"><h2>HTTP request latency (ms)</h2>
         <div class="chart" id="chart-http-latency"></div>
     </div>
@@ -94,6 +97,7 @@
       const charts = {
         throughput: echarts.init(document.getElementById('chart-throughput')),
         status:     echarts.init(document.getElementById('chart-status')),
+        routing:    echarts.init(document.getElementById('chart-routing')),
         httpLat:    echarts.init(document.getElementById('chart-http-latency')),
         httpsLat:   echarts.init(document.getElementById('chart-https-latency')),
       };
@@ -160,6 +164,27 @@
         });
       };
 
+      const renderRouting = (counters) => {
+        // Cumulative direct-vs-remote split per protocol (stacked: green=direct, blue=remote).
+        const httpDirect  = counters['proxy.http.requests.direct']  || 0;
+        const httpRemote  = counters['proxy.http.requests.remote']  || 0;
+        const httpsDirect = counters['proxy.https.tunnels.direct']  || 0;
+        const httpsRemote = counters['proxy.https.tunnels.remote']  || 0;
+        charts.routing.setOption({
+          grid: { left: 50, right: 20, top: 30, bottom: 30 },
+          tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+          legend: { top: 0, textStyle: { fontSize: 11 } },
+          xAxis: { type: 'category', data: ['HTTP', 'HTTPS'] },
+          yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+          series: [
+            { name: 'direct', type: 'bar', stack: 'total',
+              data: [httpDirect, httpsDirect], itemStyle: { color: '#4ade80' } },
+            { name: 'remote', type: 'bar', stack: 'total',
+              data: [httpRemote, httpsRemote], itemStyle: { color: '#60a5fa' } },
+          ],
+        });
+      };
+
       const setCard = (id, value) => {
         document.getElementById(id).textContent = value == null ? '—' : value;
       };
@@ -210,6 +235,7 @@
 
         renderThroughput();
         renderStatus(c);
+        renderRouting(c);
         renderLatency(charts.httpLat,  series.httpP50,  series.httpP95,  series.httpP99);
         renderLatency(charts.httpsLat, series.httpsP50, series.httpsP95, series.httpsP99);
 

@@ -1,6 +1,7 @@
 package org.deadbeef.client;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.MultiMap;
@@ -8,6 +9,7 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.util.HttpHeaderDecoder;
 import org.junit.Test;
 import org.mockito.Mockito;
 
@@ -102,5 +104,30 @@ public class HttpServerRequestEncoderTest {
 
     assertEquals("application/json", encoded.getHeaders().getAccept());
     assertEquals("abc", encoded.getHeaders().getUndeclaredPairsMap().get("x-trace-id"));
+  }
+
+  @Test
+  public void stripsHopByHopHeaders() {
+    HttpServerRequest request =
+        mockRequest(HttpMethod.GET, HttpVersion.HTTP_1_1, "example.com", "/", null);
+    request.headers().add(HttpHeaderNames.CONNECTION, "keep-alive");
+    request.headers().add(HttpHeaderNames.PROXY_CONNECTION, "keep-alive");
+    request.headers().add(HttpHeaderNames.TRANSFER_ENCODING, "chunked");
+    request.headers().add(HttpHeaderNames.PROXY_AUTHORIZATION, "secret");
+    request.headers().add(HttpHeaderNames.UPGRADE, "h2c");
+    // End-to-end headers must survive.
+    request.headers().add(HttpHeaderNames.CONTENT_LENGTH, "12");
+    request.headers().add("X-Trace-Id", "abc");
+
+    HttpProto.Request encoded = new HttpServerRequestEncoder().apply(request);
+    MultiMap decoded = new HttpHeaderDecoder().apply(encoded.getHeaders());
+
+    assertNull(decoded.get(HttpHeaderNames.CONNECTION));
+    assertNull(decoded.get(HttpHeaderNames.PROXY_CONNECTION));
+    assertNull(decoded.get(HttpHeaderNames.TRANSFER_ENCODING));
+    assertNull(decoded.get(HttpHeaderNames.PROXY_AUTHORIZATION));
+    assertNull(decoded.get(HttpHeaderNames.UPGRADE));
+    assertEquals("12", decoded.get(HttpHeaderNames.CONTENT_LENGTH));
+    assertEquals("abc", decoded.get("X-Trace-Id"));
   }
 }

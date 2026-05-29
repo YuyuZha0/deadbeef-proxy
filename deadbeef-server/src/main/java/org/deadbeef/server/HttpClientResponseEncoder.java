@@ -5,6 +5,7 @@ import io.vertx.core.http.HttpClientResponse;
 import java.util.function.Function;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.util.HopByHopHeaders;
 import org.deadbeef.util.HttpHeaderEncoder;
 
 public final class HttpClientResponseEncoder
@@ -17,7 +18,10 @@ public final class HttpClientResponseEncoder
     HttpProto.Response.Builder builder = HttpProto.Response.newBuilder();
     MultiMap headers = clientResponse.headers();
     if (headers != null) {
-      builder.setHeaders(headerEncoder.apply(headers));
+      // Strip hop-by-hop headers so the origin's connection-scoped headers (Connection,
+      // Transfer-Encoding, Keep-Alive, ...) are not replayed verbatim to the browser; the client
+      // re-frames the response on its own leg.
+      builder.setHeaders(headerEncoder.apply(HopByHopHeaders.copyEndToEnd(headers)));
     }
     builder.setStatusCode(clientResponse.statusCode());
     String statusMessage = clientResponse.statusMessage();
