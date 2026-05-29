@@ -1,11 +1,13 @@
 package org.deadbeef.util;
 
+import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableSet;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.util.AsciiString;
 import io.vertx.core.MultiMap;
-import java.util.HashSet;
-import java.util.Locale;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 
 /**
@@ -16,17 +18,20 @@ import org.apache.commons.lang3.StringUtils;
  */
 public final class HopByHopHeaders {
 
-  private static final Set<String> HOP_BY_HOP =
-      Set.of(
-          HttpHeaderNames.CONNECTION.toString(),
-          HttpHeaderNames.PROXY_CONNECTION.toString(),
-          HttpHeaderNames.KEEP_ALIVE.toString(),
-          HttpHeaderNames.PROXY_AUTHENTICATE.toString(),
-          HttpHeaderNames.PROXY_AUTHORIZATION.toString(),
-          HttpHeaderNames.TE.toString(),
-          HttpHeaderNames.TRAILER.toString(),
-          HttpHeaderNames.TRANSFER_ENCODING.toString(),
-          HttpHeaderNames.UPGRADE.toString());
+  @SuppressWarnings(
+      "deprecation") // HttpHeaderNames.PROXY_CONNECTION is deprecated but still widely used by
+  // buggy clients and proxies
+  private static final Set<AsciiString> HOP_BY_HOP =
+      ImmutableSet.of(
+          HttpHeaderNames.CONNECTION,
+          HttpHeaderNames.PROXY_CONNECTION,
+          HttpHeaderNames.KEEP_ALIVE,
+          HttpHeaderNames.PROXY_AUTHENTICATE,
+          HttpHeaderNames.PROXY_AUTHORIZATION,
+          HttpHeaderNames.TE,
+          HttpHeaderNames.TRAILER,
+          HttpHeaderNames.TRANSFER_ENCODING,
+          HttpHeaderNames.UPGRADE);
 
   private HopByHopHeaders() {
     throw new IllegalStateException();
@@ -36,11 +41,11 @@ public final class HopByHopHeaders {
    * Feed every end-to-end header of {@code headers} to {@code consumer}, dropping hop-by-hop ones.
    */
   public static void forEachEndToEnd(MultiMap headers, BiConsumer<String, String> consumer) {
-    Set<String> connectionTokens = connectionTokens(headers);
+    Set<AsciiString> connectionTokens = connectionTokens(headers);
     headers.forEach(
         entry -> {
           String name = entry.getKey();
-          String lower = name.toLowerCase(Locale.ROOT);
+          AsciiString lower = AsciiString.cached(name).toLowerCase();
           if (!HOP_BY_HOP.contains(lower) && !connectionTokens.contains(lower)) {
             consumer.accept(name, entry.getValue());
           }
@@ -54,18 +59,17 @@ public final class HopByHopHeaders {
     return copy;
   }
 
-  private static Set<String> connectionTokens(MultiMap headers) {
+  private static Set<AsciiString> connectionTokens(MultiMap headers) {
     String connection = headers.get(HttpHeaderNames.CONNECTION);
     if (StringUtils.isEmpty(connection)) {
-      return Set.of();
+      return ImmutableSet.of();
     }
-    Set<String> tokens = new HashSet<>();
-    for (String token : StringUtils.split(connection.toLowerCase(Locale.ROOT), ',')) {
-      String trimmed = token.trim();
-      if (!trimmed.isEmpty()) {
-        tokens.add(trimmed);
-      }
-    }
-    return tokens;
+    return Splitter.on(',')
+        .trimResults()
+        .omitEmptyStrings()
+        .splitToStream(connection)
+        .map(AsciiString::cached)
+        .map(AsciiString::toLowerCase)
+        .collect(Collectors.toSet());
   }
 }
