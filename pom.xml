@@ -204,7 +204,9 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.5.2</version>
                     <configuration>
-                        <argLine>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED -Dio.netty.tryReflectionSetAccessible=true</argLine>
+                        <argLine>--add-opens java.base/jdk.internal.misc=ALL-UNNAMED
+                            -Dio.netty.tryReflectionSetAccessible=true
+                        </argLine>
                     </configuration>
                 </plugin>
             </plugins>

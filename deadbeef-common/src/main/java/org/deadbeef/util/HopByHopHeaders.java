@@ -32,7 +32,9 @@ public final class HopByHopHeaders {
     throw new IllegalStateException();
   }
 
-  /** Feed every end-to-end header of {@code headers} to {@code consumer}, dropping hop-by-hop ones. */
+  /**
+   * Feed every end-to-end header of {@code headers} to {@code consumer}, dropping hop-by-hop ones.
+   */
   public static void forEachEndToEnd(MultiMap headers, BiConsumer<String, String> consumer) {
     Set<String> connectionTokens = connectionTokens(headers);
     headers.forEach(

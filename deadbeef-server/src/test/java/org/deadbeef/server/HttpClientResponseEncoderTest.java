@@ -1,13 +1,13 @@
 package org.deadbeef.server;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpClientResponse;
 import org.deadbeef.protocol.HttpProto;
 import org.junit.Test;
 import org.mockito.Mockito;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 
 public class HttpClientResponseEncoderTest {
 

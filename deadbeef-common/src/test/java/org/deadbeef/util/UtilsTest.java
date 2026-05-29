@@ -33,9 +33,7 @@ public class UtilsTest {
   @Test
   public void clearHandlersClearsHandlersWithoutThrowing() {
     ReadStream<?> stream = Mockito.mock(ReadStream.class);
-    Mockito.doThrow(new RuntimeException("ignore me"))
-        .when(stream)
-        .endHandler(Mockito.any());
+    Mockito.doThrow(new RuntimeException("ignore me")).when(stream).endHandler(Mockito.any());
 
     Utils.clearHandlers(stream);
 

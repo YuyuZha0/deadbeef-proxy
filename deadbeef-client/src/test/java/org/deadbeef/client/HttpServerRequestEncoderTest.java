@@ -1,5 +1,7 @@
 package org.deadbeef.client;
 
+import static org.junit.Assert.assertEquals;
+
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.MultiMap;
 import io.vertx.core.http.HttpMethod;
@@ -8,8 +10,6 @@ import io.vertx.core.http.HttpVersion;
 import org.deadbeef.protocol.HttpProto;
 import org.junit.Test;
 import org.mockito.Mockito;
-
-import static org.junit.Assert.assertEquals;
 
 public class HttpServerRequestEncoderTest {
 

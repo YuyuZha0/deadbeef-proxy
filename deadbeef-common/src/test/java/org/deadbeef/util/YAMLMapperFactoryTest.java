@@ -1,13 +1,13 @@
 package org.deadbeef.util;
 
+import static org.junit.Assert.assertEquals;
+
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
 
 public class YAMLMapperFactoryTest {
 

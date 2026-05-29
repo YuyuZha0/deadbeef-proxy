@@ -16,21 +16,38 @@ A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing betwe
 
 ## Architecture
 
-`deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over a **single port**: HTTP-proxy traffic is sent as a `POST` whose body carries a Protobuf-framed envelope prefixed with the magic `0xDEADBEEF`, while HTTPS tunnels use **standard HTTP CONNECT** upgraded to raw TCP via Vert.x's `HttpServerRequest.toNetSocket(...)`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp, carried uniformly in the `X-Deadbeef-Auth` header; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
+`deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port
+that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic
+onward to the real upstream. The two processes talk over a **single port**: HTTP-proxy traffic is sent as a `POST` whose
+body carries a Protobuf-framed envelope prefixed with the magic `0xDEADBEEF`, while HTTPS tunnels use **standard HTTP
+CONNECT** upgraded to raw TCP via Vert.x's `HttpServerRequest.toNetSocket(...)`. Each request is authenticated with an
+HMAC-SHA256 signature over a per-request nonce and timestamp, carried uniformly in the `X-Deadbeef-Auth` header; secrets
+never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
 
 ### Direct-first routing (client)
 
-By default the client tries to reach the target **directly** first — a plain HTTP request for HTTP, a raw TCP tunnel for HTTPS `CONNECT` — and only falls back to the remote server when the direct connection cannot be established. A per-target reachability gate (`ReachabilityGate`) remembers the verdict for a few minutes so known-unreachable destinations fast-fail straight to the remote path instead of being re-probed on every request, and the fallback happens at connect time (before any request body is consumed) so it is transparent. Set `proxyAll: true` to disable this and route everything through the remote server. The `proxy.{http,https}.*.{direct,remote}` metrics show the split.
+By default the client tries to reach the target **directly** first — a plain HTTP request for HTTP, a raw TCP tunnel for
+HTTPS `CONNECT` — and only falls back to the remote server when the direct connection cannot be established. A
+per-target reachability gate (`ReachabilityGate`) remembers the verdict for a few minutes so known-unreachable
+destinations fast-fail straight to the remote path instead of being re-probed on every request, and the fallback happens
+at connect time (before any request body is consumed) so it is transparent. Set `proxyAll: true` to disable this and
+route everything through the remote server. The `proxy.{http,https}.*.{direct,remote}` metrics show the split.
 
 ### Security defenses (server-side)
 
 - **HMAC-SHA256 authentication** with constant-time signature comparison (`MessageDigest.isEqual`).
-- **Replay rejection**: every `(secretId, nonce)` pair is single-use within the auth window. Captured tokens cannot be replayed; the Caffeine-backed nonce cache is sized at 2¹⁸ entries with TTL = 2.5× the auth window.
-- **SSRF filter** (`org.deadbeef.security.UpstreamAddressFilter`): the server resolves the upstream host via Vert.x's configured `addressResolver:` chain, then rejects loopback, link-local (incl. cloud-metadata `169.254.169.254`), RFC1918, multicast, unspecified, and IPv4 broadcast destinations before opening any TCP connection. Returns `403 Forbidden`. Configurable per category via the filter's builder; v2.0 ships with the strict default.
+- **Replay rejection**: every `(secretId, nonce)` pair is single-use within the auth window. Captured tokens cannot be
+  replayed; the Caffeine-backed nonce cache is sized at 2¹⁸ entries with TTL = 2.5× the auth window.
+- **SSRF filter** (`org.deadbeef.security.UpstreamAddressFilter`): the server resolves the upstream host via Vert.x's
+  configured `addressResolver:` chain, then rejects loopback, link-local (incl. cloud-metadata `169.254.169.254`),
+  RFC1918, multicast, unspecified, and IPv4 broadcast destinations before opening any TCP connection. Returns
+  `403 Forbidden`. Configurable per category via the filter's builder; v2.0 ships with the strict default.
 
 > **Migration notes**:
 >
-> - **v1.x → v2.0** is wire-incompatible. The HTTPS tunnel protocol switched from a bespoke `NetServer`-on-`httpsPort` framing to standard HTTP CONNECT on the same port as the HTTP-proxy flow; the auth header was renamed `X-Deadbeaf-Auth` → `X-Deadbeef-Auth`. Roll client and server together.
+> - **v1.x → v2.0** is wire-incompatible. The HTTPS tunnel protocol switched from a bespoke `NetServer`-on-`httpsPort`
+    framing to standard HTTP CONNECT on the same port as the HTTP-proxy flow; the auth header was renamed
+    `X-Deadbeaf-Auth` → `X-Deadbeef-Auth`. Roll client and server together.
 
 ## System Requirements
 
@@ -45,7 +62,8 @@ Compile and package both modules from the project root:
 mvn clean package -DwithNativeDependency=true
 ```
 
-The shaded fat-jars land in `deadbeef-client/target/` and `deadbeef-server/target/`. The `withNativeDependency=true` profile pulls in the platform-specific Netty native libraries — recommended for best performance.
+The shaded fat-jars land in `deadbeef-client/target/` and `deadbeef-server/target/`. The `withNativeDependency=true`
+profile pulls in the platform-specific Netty native libraries — recommended for best performance.
 
 ## Testing
 
@@ -57,7 +75,8 @@ mvn -B verify
 
 ### Client (local)
 
-Run the client on the machine you want to proxy traffic from. It opens a single port (`localPort`) that any HTTP client can use as a forward proxy.
+Run the client on the machine you want to proxy traffic from. It opens a single port (`localPort`) that any HTTP client
+can use as a forward proxy.
 
 ```bash
 java \
@@ -67,7 +86,8 @@ java \
   --config client-config.yaml
 ```
 
-> The `--add-opens` and `-Dio.netty.tryReflectionSetAccessible` flags let Netty use its fast direct-memory paths on JDK 21. They are not strictly required, but skipping them prints warnings and may slightly degrade throughput.
+> The `--add-opens` and `-Dio.netty.tryReflectionSetAccessible` flags let Netty use its fast direct-memory paths on JDK
+21. They are not strictly required, but skipping them prints warnings and may slightly degrade throughput.
 
 Example `client-config.yaml`:
 
@@ -104,8 +124,6 @@ nohup java \
 echo $! > pid.file
 ```
 
-
-
 Example `server-config.yaml`:
 
 ```yaml
@@ -127,20 +145,30 @@ addressResolver: [ 8.8.8.8, 114.114.114.114 ]
 
 ### Live metrics dashboard (client)
 
-When `adminPort` is set, the client opens a tiny HTTP server bound to `127.0.0.1:<adminPort>` (loopback only — never reachable from the LAN) that serves a single-page metrics dashboard. Open `http://127.0.0.1:<adminPort>/` in a browser; the page polls `/api/metrics` every 2 seconds and renders ECharts-based throughput / latency / status-code visualisations.
+When `adminPort` is set, the client opens a tiny HTTP server bound to `127.0.0.1:<adminPort>` (loopback only — never
+reachable from the LAN) that serves a single-page metrics dashboard. Open `http://127.0.0.1:<adminPort>/` in a browser;
+the page polls `/api/metrics` every 2 seconds and renders ECharts-based throughput / latency / status-code
+visualisations.
 
-Dashboard dependencies are loaded from public CDNs (`cdn.jsdelivr.net` for ECharts and Pico CSS) — no npm, no build pipeline, no bundled assets beyond a single `dashboard.html` on the classpath. Data lives in memory only; closing the page resets the rolling charts. Omit `adminPort` to disable the endpoint entirely.
+Dashboard dependencies are loaded from public CDNs (`cdn.jsdelivr.net` for ECharts and Pico CSS) — no npm, no build
+pipeline, no bundled assets beyond a single `dashboard.html` on the classpath. Data lives in memory only; closing the
+page resets the rolling charts. Omit `adminPort` to disable the endpoint entirely.
 
 Tracked metrics (all under the `proxy.*` namespace):
 
-- **HTTP-proxy flow** — `requests.total`, `requests.failed`, `requests.in_flight`, `responses.{2xx,3xx,4xx,5xx}`, `request.duration` (timer), `bytes.up`, `bytes.down`.
-- **HTTPS-tunnel flow** — `tunnels.opened`, `tunnels.failed`, `tunnels.active`, `connect.duration` (timer), `bytes.up`, `bytes.down`.
+- **HTTP-proxy flow** — `requests.total`, `requests.failed`, `requests.in_flight`, `responses.{2xx,3xx,4xx,5xx}`,
+  `request.duration` (timer), `bytes.up`, `bytes.down`.
+- **HTTPS-tunnel flow** — `tunnels.opened`, `tunnels.failed`, `tunnels.active`, `connect.duration` (timer), `bytes.up`,
+  `bytes.down`.
 
 ## Configuration reference
 
-The `httpClient`, `httpServer`, `netClient`, and `localServer` blocks deserialize directly into their Vert.x option types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class can be set there — TLS, write queue sizing, connect timeouts, etc.
+The `httpClient`, `httpServer`, `netClient`, and `localServer` blocks deserialize directly into their Vert.x option
+types via a custom Jackson module (`VertxJsonModule`). Any field accepted by the corresponding Vert.x `*Options` class
+can be set there — TLS, write queue sizing, connect timeouts, etc.
 
-Auth-window tolerance is **10 minutes** on either side of the server's wall clock; keep the two hosts loosely time-synchronized.
+Auth-window tolerance is **10 minutes** on either side of the server's wall clock; keep the two hosts loosely
+time-synchronized.
 
 ## License
 

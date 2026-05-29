@@ -1,13 +1,12 @@
 package org.deadbeef.streams;
 
-import io.vertx.core.buffer.Buffer;
-import org.deadbeef.protocol.HttpProto;
-import org.junit.Test;
-
-import java.nio.charset.StandardCharsets;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+
+import io.vertx.core.buffer.Buffer;
+import java.nio.charset.StandardCharsets;
+import org.deadbeef.protocol.HttpProto;
+import org.junit.Test;
 
 public class PrefixTest {
 
@@ -54,8 +53,7 @@ public class PrefixTest {
 
   @Test
   public void serializeToBufferSizeAddsFixed() {
-    HttpProto.Request msg =
-        HttpProto.Request.newBuilder().setMethod(HttpProto.Method.GET).build();
+    HttpProto.Request msg = HttpProto.Request.newBuilder().setMethod(HttpProto.Method.GET).build();
 
     assertEquals(Prefix.FIXED + msg.getSerializedSize(), Prefix.serializeToBufferSize(msg));
   }

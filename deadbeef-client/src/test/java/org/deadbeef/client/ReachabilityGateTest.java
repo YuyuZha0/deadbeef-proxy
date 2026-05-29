@@ -74,8 +74,7 @@ public class ReachabilityGateTest {
     ReachabilityGate<String> gate = newGate();
     SocketAddress other = SocketAddress.inetSocketAddress(9090, "other.example.com");
 
-    Future<String> down =
-        gate.apply(ADDR, () -> Future.failedFuture(new RuntimeException("down")));
+    Future<String> down = gate.apply(ADDR, () -> Future.failedFuture(new RuntimeException("down")));
     Future<String> up = gate.apply(other, () -> Future.succeededFuture("ok"));
 
     assertTrue(down.failed());

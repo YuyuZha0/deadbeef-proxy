@@ -22,14 +22,13 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import org.deadbeef.protocol.HttpProto;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 @RunWith(VertxUnitRunner.class)
 public class ProxyStreamPrefixVisitorTest {
@@ -37,6 +36,40 @@ public class ProxyStreamPrefixVisitorTest {
   @Rule public RunTestOnContext rule = new RunTestOnContext();
 
   // ---------- constructor validation ----------
+
+  private static HttpProto.Request sampleRequest() {
+    return HttpProto.Request.newBuilder()
+        .setHeaders(
+            HttpProto.Headers.newBuilder().setAccept("*/*").setContentType("application/json"))
+        .setMethod(HttpProto.Method.POST)
+        .setScheme("https")
+        .setVersion(HttpProto.Version.HTTP_1_1)
+        .build();
+  }
+
+  private static HttpProto.Request parseRequest(TestContext ctx, Buffer prefixBuffer) {
+    try {
+      return HttpProto.Request.parseFrom(prefixBuffer.getBytes());
+    } catch (InvalidProtocolBufferException e) {
+      ctx.fail(e);
+      throw new AssertionError(e);
+    }
+  }
+
+  private static Buffer randomBytes(int len) {
+    byte[] bytes = PlatformDependent.allocateUninitializedArray(len);
+    ThreadLocalRandom.current().nextBytes(bytes);
+    return Buffer.buffer(bytes);
+  }
+
+  // ---------- visit() param validation ----------
+
+  private static Buffer rawHeader(int magic, int bodyLen) {
+    ByteBuf buf = Unpooled.buffer(8);
+    buf.writeInt(magic);
+    buf.writeInt(bodyLen);
+    return Buffer.buffer(buf);
+  }
 
   @Test(expected = NullPointerException.class)
   public void rejectsNullVertxInTwoArgConstructor() {
@@ -48,13 +81,13 @@ public class ProxyStreamPrefixVisitorTest {
     new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx(), null);
   }
 
+  // ---------- happy paths ----------
+
   @Test
   public void singleArgConstructorUsesDefaultPipeFactory() {
     // Just builds; no NPE expected.
     new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx());
   }
-
-  // ---------- visit() param validation ----------
 
   @Test(expected = NullPointerException.class)
   public void visitRejectsNullSrcInFutureForm() {
@@ -72,8 +105,6 @@ public class ProxyStreamPrefixVisitorTest {
     new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx())
         .visit(new FakeReadStream(), null);
   }
-
-  // ---------- happy paths ----------
 
   @Test
   public void parsesPrefixDeliveredInOneChunk(TestContext ctx) {
@@ -120,6 +151,8 @@ public class ProxyStreamPrefixVisitorTest {
           }
         });
   }
+
+  // ---------- failure paths ----------
 
   @Test
   public void copyWritesTailWhenStreamAlreadyEnded(TestContext ctx) {
@@ -258,8 +291,6 @@ public class ProxyStreamPrefixVisitorTest {
         });
   }
 
-  // ---------- failure paths ----------
-
   @Test
   public void failsWhenMagicDoesNotMatch(TestContext ctx) {
     Vertx vertx = rule.vertx();
@@ -317,6 +348,8 @@ public class ProxyStreamPrefixVisitorTest {
         });
   }
 
+  // ---------- existing real-HTTP integration test, kept as backstop ----------
+
   @Test
   public void streamEndingBeforePrefixFailsPromise(TestContext ctx) {
     Vertx vertx = rule.vertx();
@@ -360,6 +393,8 @@ public class ProxyStreamPrefixVisitorTest {
         });
   }
 
+  // ---------- helpers ----------
+
   @Test(expected = IllegalArgumentException.class)
   public void rejectsZeroBodyLengthLimit() {
     new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx(), new DefaultPipeFactory(), 0);
@@ -383,8 +418,6 @@ public class ProxyStreamPrefixVisitorTest {
           src.fail(new RuntimeException("upstream-boom"));
         });
   }
-
-  // ---------- existing real-HTTP integration test, kept as backstop ----------
 
   @Test
   public void httpRoundTripStillWorks(TestContext testContext) {
@@ -466,40 +499,6 @@ public class ProxyStreamPrefixVisitorTest {
                                     async.countDown();
                                   }));
             });
-  }
-
-  // ---------- helpers ----------
-
-  private static HttpProto.Request sampleRequest() {
-    return HttpProto.Request.newBuilder()
-        .setHeaders(
-            HttpProto.Headers.newBuilder().setAccept("*/*").setContentType("application/json"))
-        .setMethod(HttpProto.Method.POST)
-        .setScheme("https")
-        .setVersion(HttpProto.Version.HTTP_1_1)
-        .build();
-  }
-
-  private static HttpProto.Request parseRequest(TestContext ctx, Buffer prefixBuffer) {
-    try {
-      return HttpProto.Request.parseFrom(prefixBuffer.getBytes());
-    } catch (InvalidProtocolBufferException e) {
-      ctx.fail(e);
-      throw new AssertionError(e);
-    }
-  }
-
-  private static Buffer randomBytes(int len) {
-    byte[] bytes = PlatformDependent.allocateUninitializedArray(len);
-    ThreadLocalRandom.current().nextBytes(bytes);
-    return Buffer.buffer(bytes);
-  }
-
-  private static Buffer rawHeader(int magic, int bodyLen) {
-    ByteBuf buf = Unpooled.buffer(8);
-    buf.writeInt(magic);
-    buf.writeInt(bodyLen);
-    return Buffer.buffer(buf);
   }
 
   private static final class FakeReadStream implements ReadStream<Buffer> {

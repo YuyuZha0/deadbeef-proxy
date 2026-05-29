@@ -8,10 +8,9 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetClientOptions;
+import java.util.Arrays;
 import lombok.SneakyThrows;
 import org.junit.Test;
-
-import java.util.Arrays;
 
 public class ConfigDemoGenerator {
 

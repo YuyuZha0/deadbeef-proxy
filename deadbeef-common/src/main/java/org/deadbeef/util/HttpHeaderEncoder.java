@@ -5,12 +5,11 @@ import com.google.common.base.CaseFormat;
 import com.google.common.collect.Maps;
 import com.google.protobuf.Descriptors;
 import io.vertx.core.MultiMap;
-import lombok.NonNull;
-import org.deadbeef.protocol.HttpProto;
-
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import lombok.NonNull;
+import org.deadbeef.protocol.HttpProto;
 
 public final class HttpHeaderEncoder implements Function<MultiMap, HttpProto.Headers> {
 

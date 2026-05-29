@@ -1,20 +1,19 @@
 package org.deadbeef.auth;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hashing;
-import com.google.protobuf.ByteString;
-import org.apache.commons.lang3.RandomStringUtils;
-import org.deadbeef.protocol.HttpProto;
-import org.junit.Test;
-
-import java.nio.charset.StandardCharsets;
-import java.util.concurrent.TimeUnit;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+
+import com.google.common.collect.ImmutableMap;
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
+import com.google.protobuf.ByteString;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang3.RandomStringUtils;
+import org.deadbeef.protocol.HttpProto;
+import org.junit.Test;
 
 public class ProxyAuthenticationValidatorTest {
 

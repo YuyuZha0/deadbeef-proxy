@@ -1,10 +1,9 @@
 package org.deadbeef.security;
 
 import com.google.common.net.InetAddresses;
-import lombok.NonNull;
-
 import java.net.InetAddress;
 import java.util.function.Predicate;
+import lombok.NonNull;
 
 /**
  * Deny-list policy used by the server-side handlers to decide whether a resolved upstream address

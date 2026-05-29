@@ -12,12 +12,6 @@ import io.vertx.core.cli.CommandLine;
 import io.vertx.core.cli.Option;
 import io.vertx.core.dns.AddressResolverOptions;
 import io.vertx.core.logging.SLF4JLogDelegateFactory;
-import lombok.NonNull;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
-import org.deadbeef.util.Constants;
-import org.deadbeef.util.YAMLMapperFactory;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -26,6 +20,11 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import lombok.NonNull;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
+import org.deadbeef.util.Constants;
+import org.deadbeef.util.YAMLMapperFactory;
 
 @Slf4j
 public final class Bootstrap {

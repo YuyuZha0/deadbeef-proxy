@@ -1,5 +1,8 @@
 package org.deadbeef.streams;
 
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import io.vertx.core.buffer.Buffer;
@@ -7,9 +10,6 @@ import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import org.junit.Test;
 import org.mockito.Mockito;
-
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
 
 public class MetricPipeFactoryTest {
 

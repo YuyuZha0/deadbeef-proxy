@@ -15,7 +15,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetClientOptions;
 import io.vertx.core.net.NetServerOptions;
 import io.vertx.core.net.TCPSSLOptions;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

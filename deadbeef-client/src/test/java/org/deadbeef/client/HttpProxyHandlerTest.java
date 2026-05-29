@@ -1,7 +1,6 @@
 package org.deadbeef.client;
 
 import com.codahale.metrics.MetricRegistry;
-import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;

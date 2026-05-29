@@ -2,8 +2,6 @@ package org.deadbeef.util;
 
 import io.netty.util.AsciiString;
 
-import java.util.concurrent.TimeUnit;
-
 public final class Constants {
 
   private static final AsciiString AUTH_HEADER_NAME = AsciiString.cached("X-Deadbeef-Auth");

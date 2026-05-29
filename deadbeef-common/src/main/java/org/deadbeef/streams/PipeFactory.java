@@ -3,7 +3,6 @@ package org.deadbeef.streams;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
-
 import java.util.function.Function;
 
 // TODO we may add some PipeImpl with metric later

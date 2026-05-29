@@ -1,5 +1,7 @@
 package org.deadbeef.util;
 
+import static org.junit.Assert.assertEquals;
+
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonArray;
@@ -7,8 +9,6 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.net.NetClientOptions;
 import io.vertx.core.net.NetServerOptions;
 import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
 
 public class VertxJsonModuleTest {
 

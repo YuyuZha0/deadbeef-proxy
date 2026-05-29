@@ -38,9 +38,9 @@ import org.deadbeef.util.Utils;
 /**
  * Handles plaintext HTTP proxy requests. Unless {@code proxyAll} is set, it first tries an ordinary
  * HTTP request straight to the target (gated by {@link ReachabilityGate}); only when that direct
- * connection cannot be established does it fall back to the remote proxy, which wraps the request in
- * the protobuf envelope. Fallback happens at connection time — before the request body is consumed
- * — so the body is intact for whichever path wins.
+ * connection cannot be established does it fall back to the remote proxy, which wraps the request
+ * in the protobuf envelope. Fallback happens at connection time — before the request body is
+ * consumed — so the body is intact for whichever path wins.
  */
 @Slf4j
 public final class HttpProxyHandler implements Handler<HttpServerRequest> {
@@ -156,7 +156,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
         .apply(target, () -> httpClient.request(directOptions))
         .onSuccess(
             clientRequest ->
-                proxyDirect(serverRequest, serverResponse, clientRequest, contentLength, errorHandler))
+                proxyDirect(
+                    serverRequest, serverResponse, clientRequest, contentLength, errorHandler))
         .onFailure(
             cause -> proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler));
   }
@@ -204,7 +205,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       Handler<Throwable> errorHandler) {
     clientRequest
         .response()
-        .onSuccess(clientResponse -> writeDirectResponse(serverResponse, clientResponse, errorHandler))
+        .onSuccess(
+            clientResponse -> writeDirectResponse(serverResponse, clientResponse, errorHandler))
         .onFailure(errorHandler);
   }
 

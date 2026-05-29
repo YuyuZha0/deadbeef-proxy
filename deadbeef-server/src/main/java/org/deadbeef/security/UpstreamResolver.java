@@ -7,11 +7,10 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.VertxInternal;
 import io.vertx.core.net.SocketAddress;
+import java.net.InetAddress;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.util.HttpRequestUtils;
-
-import java.net.InetAddress;
 
 /**
  * Shared "resolve a hostname via Vert.x's configured resolver, then apply the {@link

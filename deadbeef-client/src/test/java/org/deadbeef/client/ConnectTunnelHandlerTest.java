@@ -71,8 +71,7 @@ public class ConnectTunnelHandlerTest {
   private Future<HttpServer> startClientFacingServer(
       Vertx vertx, HttpClient httpClient, int remotePort) {
     // Default helper for remote-path tests: always proxy, never try direct.
-    return startClientFacingServer(
-        vertx, httpClient, vertx.createNetClient(), remotePort, true);
+    return startClientFacingServer(vertx, httpClient, vertx.createNetClient(), remotePort, true);
   }
 
   @Test
@@ -89,9 +88,7 @@ public class ConnectTunnelHandlerTest {
                 req.response().setStatusCode(407).end();
                 return;
               }
-              req.toNetSocket()
-                  .onSuccess(sock -> sock.handler(sock::write))
-                  .onFailure(ctx::fail);
+              req.toNetSocket().onSuccess(sock -> sock.handler(sock::write)).onFailure(ctx::fail);
             })
         .onFailure(ctx::fail)
         .onSuccess(
@@ -242,14 +239,13 @@ public class ConnectTunnelHandlerTest {
     startStubServer(
             vertx,
             req ->
-                req.toNetSocket()
-                    .onSuccess(sock -> sock.handler(sock::write))
-                    .onFailure(ctx::fail))
+                req.toNetSocket().onSuccess(sock -> sock.handler(sock::write)).onFailure(ctx::fail))
         .onFailure(ctx::fail)
         .onSuccess(
             stub -> {
               HttpClient httpClient = vertx.createHttpClient();
-              startClientFacingServer(vertx, httpClient, vertx.createNetClient(), stub.actualPort(), false)
+              startClientFacingServer(
+                      vertx, httpClient, vertx.createNetClient(), stub.actualPort(), false)
                   .onFailure(ctx::fail)
                   .onSuccess(
                       facing -> {

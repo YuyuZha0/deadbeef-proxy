@@ -6,14 +6,13 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.net.TCPSSLOptions;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Supplier;
 
 @Slf4j
 public abstract class ProxyVerticle<C extends ProxyConfig> extends AbstractVerticle {

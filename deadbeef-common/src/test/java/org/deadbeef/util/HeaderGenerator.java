@@ -3,10 +3,9 @@ package org.deadbeef.util;
 import com.google.common.base.CaseFormat;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.util.AsciiString;
-import org.junit.Test;
-
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import org.junit.Test;
 
 public class HeaderGenerator {
 

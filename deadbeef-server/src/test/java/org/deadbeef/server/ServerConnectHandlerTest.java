@@ -30,7 +30,9 @@ public class ServerConnectHandlerTest {
 
   @Rule public RunTestOnContext rule = new RunTestOnContext();
 
-  /** Default test setup allows loopback so the fake upstream (bound to 127.0.0.1) can be reached. */
+  /**
+   * Default test setup allows loopback so the fake upstream (bound to 127.0.0.1) can be reached.
+   */
   private Future<HttpServer> startProxyServer(Vertx vertx) {
     return startProxyServer(vertx, UpstreamAddressFilter.builder().allowLoopback().build());
   }

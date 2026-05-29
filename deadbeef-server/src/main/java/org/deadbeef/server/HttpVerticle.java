@@ -10,13 +10,12 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.bootstrap.ProxyVerticle;
 import org.deadbeef.security.UpstreamAddressFilter;
 import org.deadbeef.streams.DefaultPipeFactory;
-
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public final class HttpVerticle extends ProxyVerticle<ServerConfig> {

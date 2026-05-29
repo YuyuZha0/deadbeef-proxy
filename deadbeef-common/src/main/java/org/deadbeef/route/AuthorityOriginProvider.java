@@ -9,10 +9,10 @@ import org.apache.commons.lang3.StringUtils;
 
 /**
  * Resolves the upstream target from the request-target (RFC 7230 forward-proxy semantics): a
- * CONNECT request carries an authority-form target, a plain proxied request carries an absolute-form
- * URI. The {@code Host} header is used as a fallback when the request-target is origin-form or
- * absent. {@code defaultPort} applies only to the authority / Host paths (the absolute-URI path
- * derives its default from the scheme).
+ * CONNECT request carries an authority-form target, a plain proxied request carries an
+ * absolute-form URI. The {@code Host} header is used as a fallback when the request-target is
+ * origin-form or absent. {@code defaultPort} applies only to the authority / Host paths (the
+ * absolute-URI path derives its default from the scheme).
  */
 public final class AuthorityOriginProvider implements OriginProvider {
 
@@ -20,6 +20,14 @@ public final class AuthorityOriginProvider implements OriginProvider {
 
   public AuthorityOriginProvider(int defaultPort) {
     this.defaultPort = defaultPort;
+  }
+
+  private static String hostHeader(HttpServerRequest serverRequest) {
+    return serverRequest.getHeader(HttpHeaderNames.HOST);
+  }
+
+  private static String firstNonEmpty(String a, String b) {
+    return StringUtils.isNotEmpty(a) ? a : b;
   }
 
   @Override
@@ -38,13 +46,5 @@ public final class AuthorityOriginProvider implements OriginProvider {
     Preconditions.checkArgument(
         StringUtils.isNotEmpty(host), "no authority in request-target or Host header");
     return Authorities.fromAuthority(host, defaultPort);
-  }
-
-  private static String hostHeader(HttpServerRequest serverRequest) {
-    return serverRequest.getHeader(HttpHeaderNames.HOST);
-  }
-
-  private static String firstNonEmpty(String a, String b) {
-    return StringUtils.isNotEmpty(a) ? a : b;
   }
 }

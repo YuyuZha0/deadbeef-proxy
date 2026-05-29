@@ -46,8 +46,6 @@ public final class ProxyMetrics {
   public final Timer httpRequestDuration;
   public final Meter httpBytesUp;
   public final Meter httpBytesDown;
-  private final AtomicInteger httpInFlight = new AtomicInteger();
-
   // ---- HTTPS-tunnel flow ----
   public final Counter httpsTunnelsOpened;
   public final Counter httpsTunnelsFailed;
@@ -56,6 +54,7 @@ public final class ProxyMetrics {
   public final Timer httpsConnectDuration;
   public final Meter httpsBytesUp;
   public final Meter httpsBytesDown;
+  private final AtomicInteger httpInFlight = new AtomicInteger();
   private final AtomicInteger httpsActive = new AtomicInteger();
 
   public ProxyMetrics(@NonNull MetricRegistry registry) {
@@ -84,45 +83,6 @@ public final class ProxyMetrics {
   }
 
   // ---- gauge helpers (in-flight tracking) ----
-
-  public void httpInFlightInc() {
-    httpInFlight.incrementAndGet();
-  }
-
-  public void httpInFlightDec() {
-    httpInFlight.decrementAndGet();
-  }
-
-  public int httpInFlight() {
-    return httpInFlight.get();
-  }
-
-  public void httpsActiveInc() {
-    httpsActive.incrementAndGet();
-  }
-
-  public void httpsActiveDec() {
-    httpsActive.decrementAndGet();
-  }
-
-  public int httpsActive() {
-    return httpsActive.get();
-  }
-
-  /** Bucket an HTTP status code into the appropriate counter. */
-  public void recordHttpStatus(int statusCode) {
-    if (statusCode >= 200 && statusCode < 300) {
-      httpResponse2xx.inc();
-    } else if (statusCode >= 300 && statusCode < 400) {
-      httpResponse3xx.inc();
-    } else if (statusCode >= 400 && statusCode < 500) {
-      httpResponse4xx.inc();
-    } else if (statusCode >= 500 && statusCode < 600) {
-      httpResponse5xx.inc();
-    }
-  }
-
-  // ---- dashboard snapshot serialisation ----
 
   /**
    * Serialise a {@link MetricRegistry} snapshot into a Vert.x {@link JsonObject} for the dashboard's
@@ -233,5 +193,44 @@ public final class ProxyMetrics {
 
   private static double toMillis(double nanos) {
     return nanos / (double) TimeUnit.MILLISECONDS.toNanos(1);
+  }
+
+  public void httpInFlightInc() {
+    httpInFlight.incrementAndGet();
+  }
+
+  // ---- dashboard snapshot serialisation ----
+
+  public void httpInFlightDec() {
+    httpInFlight.decrementAndGet();
+  }
+
+  public int httpInFlight() {
+    return httpInFlight.get();
+  }
+
+  public void httpsActiveInc() {
+    httpsActive.incrementAndGet();
+  }
+
+  public void httpsActiveDec() {
+    httpsActive.decrementAndGet();
+  }
+
+  public int httpsActive() {
+    return httpsActive.get();
+  }
+
+  /** Bucket an HTTP status code into the appropriate counter. */
+  public void recordHttpStatus(int statusCode) {
+    if (statusCode >= 200 && statusCode < 300) {
+      httpResponse2xx.inc();
+    } else if (statusCode >= 300 && statusCode < 400) {
+      httpResponse3xx.inc();
+    } else if (statusCode >= 400 && statusCode < 500) {
+      httpResponse4xx.inc();
+    } else if (statusCode >= 500 && statusCode < 600) {
+      httpResponse5xx.inc();
+    }
   }
 }

@@ -5,14 +5,13 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
 import lombok.NonNull;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.protocol.HttpProto;
 import org.deadbeef.util.HttpHeaderEncoder;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
 
 public final class HttpServerRequestEncoder
     implements Function<HttpServerRequest, HttpProto.Request> {

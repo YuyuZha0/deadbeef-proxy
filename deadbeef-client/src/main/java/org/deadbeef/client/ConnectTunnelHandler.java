@@ -92,7 +92,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    // Try a direct TCP tunnel to the target first; fall back to the remote proxy on connect failure.
+    // Try a direct TCP tunnel to the target first; fall back to the remote proxy on connect
+    // failure.
     SocketAddress target = targetProvider.apply(serverRequest);
     reachabilityGate
         .apply(target, () -> netClient.connect(target))
@@ -137,7 +138,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
                             return;
                           }
                           metrics.httpsRemoteTunnels.inc();
-                          openTunnel(serverRequest, clientResponse.netSocket(), stopTimer, errorHandler);
+                          openTunnel(
+                              serverRequest, clientResponse.netSocket(), stopTimer, errorHandler);
                         }));
   }
 

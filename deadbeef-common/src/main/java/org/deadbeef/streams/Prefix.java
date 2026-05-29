@@ -7,7 +7,6 @@ import io.netty.util.ReferenceCountUtil;
 import io.vertx.core.VertxException;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.buffer.impl.VertxByteBufAllocator;
-
 import java.io.IOException;
 
 public final class Prefix {

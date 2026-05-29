@@ -6,12 +6,11 @@ import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.WriteStream;
-import lombok.NonNull;
-
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import lombok.NonNull;
 
 public final class PrefixAndAction<W extends WriteStream<Buffer>>
     implements Supplier<Buffer>,
