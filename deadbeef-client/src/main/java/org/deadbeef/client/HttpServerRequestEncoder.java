@@ -44,6 +44,14 @@ public final class HttpServerRequestEncoder
     }
   }
 
+  /**
+   * Reconstruct the absolute target URL from a proxied request. Exposed so the direct-call path can
+   * build {@link io.vertx.core.http.RequestOptions#setAbsoluteURI} without re-encoding the request.
+   */
+  public static String absoluteUrl(HttpServerRequest request) {
+    return buildAbsoluteUrl(request);
+  }
+
   private static String buildAbsoluteUrl(HttpServerRequest request) {
     String hostString = request.getHeader(HttpHeaderNames.HOST);
     HostAndPort hostAndPort = HostAndPort.fromString(hostString);

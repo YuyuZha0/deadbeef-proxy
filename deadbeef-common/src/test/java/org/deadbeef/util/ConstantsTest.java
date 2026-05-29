@@ -4,7 +4,6 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 public class ConstantsTest {
 
@@ -24,11 +23,5 @@ public class ConstantsTest {
     CharSequence name = Constants.authHeaderName();
     assertNotNull(name);
     assertEquals("X-Deadbeef-Auth", name.toString());
-  }
-
-  @Test
-  public void requestTimeoutIsTwentySeconds() {
-    assertEquals(20_000, Constants.requestTimeout());
-    assertTrue(Constants.requestTimeout() > 0);
   }
 }

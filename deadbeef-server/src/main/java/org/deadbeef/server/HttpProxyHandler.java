@@ -14,10 +14,13 @@ import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.net.SocketAddress;
+import java.io.IOException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.route.Authorities;
 import org.deadbeef.security.UpstreamAddressFilter;
 import org.deadbeef.security.UpstreamResolver;
 import org.deadbeef.streams.PipeFactory;
@@ -27,10 +30,6 @@ import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
 import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
-
-import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 
 @Slf4j
 public final class HttpProxyHandler implements Handler<HttpServerRequest> {
@@ -96,21 +95,16 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       PrefixAndAction<? super HttpClientRequest> prefixAndAction,
       HttpServerResponse serverResponse,
       Handler<Throwable> errorHandler) {
-    URI uri;
+    SocketAddress target;
     try {
-      uri = new URI(request.getAbsoluteUri());
-    } catch (URISyntaxException e) {
+      target = Authorities.fromAbsoluteUri(request.getAbsoluteUri());
+    } catch (IllegalArgumentException e) {
       serverResponse.setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
       return;
     }
-    String host = uri.getHost();
-    if (host == null || host.isEmpty()) {
-      serverResponse.setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
-      return;
-    }
-    int port = effectivePort(uri);
+    String host = target.host();
 
-    UpstreamResolver.resolveAndFilter(vertx, host, port, addressFilter)
+    UpstreamResolver.resolveAndFilter(vertx, host, target.port(), addressFilter)
         .onFailure(cause -> UpstreamResolver.replyWithError(host, cause, serverResponse))
         .onSuccess(
             socketAddress -> {
@@ -129,13 +123,6 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
                     }
                   });
             });
-  }
-
-  private static int effectivePort(URI uri) {
-    if (uri.getPort() != -1) {
-      return uri.getPort();
-    }
-    return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
   }
 
   private void onRequestSuccess(
@@ -217,7 +204,6 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
     }
     requestOptions.setAbsoluteURI(request.getAbsoluteUri());
     requestOptions.setMethod(HttpMethod.valueOf(request.getMethod().name()));
-    requestOptions.setTimeout(Constants.requestTimeout());
     return requestOptions;
   }
 }

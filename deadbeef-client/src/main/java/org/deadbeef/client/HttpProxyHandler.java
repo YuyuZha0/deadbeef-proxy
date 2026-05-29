@@ -16,6 +16,7 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.core.http.RequestOptions;
+import io.vertx.core.net.SocketAddress;
 import java.io.IOException;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
@@ -23,16 +24,24 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.metrics.ProxyMetrics;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.route.AddressPicker;
+import org.deadbeef.route.OriginProvider;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
 import org.deadbeef.streams.ProxyStreamPrefixVisitor;
 import org.deadbeef.util.Constants;
+import org.deadbeef.util.HopByHopHeaders;
 import org.deadbeef.util.HttpHeaderDecoder;
 import org.deadbeef.util.HttpRequestUtils;
 import org.deadbeef.util.Utils;
 
+/**
+ * Handles plaintext HTTP proxy requests. Unless {@code proxyAll} is set, it first tries an ordinary
+ * HTTP request straight to the target (gated by {@link ReachabilityGate}); only when that direct
+ * connection cannot be established does it fall back to the remote proxy, which wraps the request in
+ * the protobuf envelope. Fallback happens at connection time — before the request body is consumed
+ * — so the body is intact for whichever path wins.
+ */
 @Slf4j
 public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
@@ -40,10 +49,14 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
   private final HttpHeaderDecoder headerDecoder = new HttpHeaderDecoder();
 
   private final PipeFactory pipeFactory;
+  private final PipeFactory downPipeFactory;
 
   private final ProxyStreamPrefixVisitor<HttpServerResponse> proxyStreamPrefixVisitor;
   private final HttpClient httpClient;
-  private final AddressPicker addressPicker;
+  private final OriginProvider remoteProvider;
+  private final OriginProvider targetProvider;
+  private final ReachabilityGate<HttpClientRequest> reachabilityGate;
+  private final boolean proxyAll;
 
   private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
   private final ProxyMetrics metrics;
@@ -51,16 +64,23 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
   public HttpProxyHandler(
       @NonNull Vertx vertx,
       @NonNull HttpClient httpClient,
-      @NonNull AddressPicker addressPicker,
+      @NonNull OriginProvider remoteProvider,
+      @NonNull OriginProvider targetProvider,
+      @NonNull ReachabilityGate<HttpClientRequest> reachabilityGate,
+      boolean proxyAll,
       @NonNull ProxyAuthenticationGenerator generator,
       @NonNull ProxyMetrics metrics) {
     this.proxyStreamPrefixVisitor =
         new ProxyStreamPrefixVisitor<>(vertx, new MetricPipeFactory(metrics.httpBytesDown));
     this.httpClient = httpClient;
-    this.addressPicker = addressPicker;
+    this.remoteProvider = remoteProvider;
+    this.targetProvider = targetProvider;
+    this.reachabilityGate = reachabilityGate;
+    this.proxyAll = proxyAll;
     this.proxyAuthenticationGenerator = generator;
     this.metrics = metrics;
     this.pipeFactory = new MetricPipeFactory(metrics.httpBytesUp, true, true);
+    this.downPipeFactory = new MetricPipeFactory(metrics.httpBytesDown);
   }
 
   private boolean should100Continue(HttpServerRequest request) {
@@ -100,18 +120,6 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
               metrics.httpInFlightDec();
             });
 
-    long contentLength = HttpRequestUtils.contentLength(serverRequest.headers());
-    HttpProto.Request proto = httpServerRequestEncoder.apply(serverRequest);
-    if (log.isDebugEnabled()) {
-      log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), proto);
-    }
-
-    RequestOptions requestOptions = new RequestOptions();
-    requestOptions.setMethod(HttpMethod.POST);
-    requestOptions.setServer(addressPicker.apply(serverRequest));
-    requestOptions.setTimeout(Constants.requestTimeout());
-    putHeaders(proto, contentLength, requestOptions);
-
     serverRequest.pause();
     HttpServerResponse serverResponse = serverRequest.response();
     Handler<Throwable> originalErrorHandler = HttpRequestUtils.createErrorHandler(serverResponse);
@@ -125,6 +133,121 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
     serverResponse.closeHandler(finishHandler);
     serverResponse.endHandler(finishHandler);
+
+    long contentLength = HttpRequestUtils.contentLength(serverRequest.headers());
+
+    if (proxyAll) {
+      proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
+      return;
+    }
+
+    SocketAddress target;
+    try {
+      target = targetProvider.apply(serverRequest);
+    } catch (RuntimeException e) {
+      // Cannot determine a direct target — let the remote proxy handle it.
+      proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
+      return;
+    }
+
+    // Try a direct request to the target first; fall back to the remote proxy on connect failure.
+    RequestOptions directOptions = buildDirectOptions(serverRequest, target);
+    reachabilityGate
+        .apply(target, () -> httpClient.request(directOptions))
+        .onSuccess(
+            clientRequest ->
+                proxyDirect(serverRequest, serverResponse, clientRequest, contentLength, errorHandler))
+        .onFailure(
+            cause -> proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler));
+  }
+
+  // ---- direct path: ordinary HTTP straight to the target ----
+
+  private RequestOptions buildDirectOptions(HttpServerRequest serverRequest, SocketAddress target) {
+    RequestOptions options = new RequestOptions();
+    options.setMethod(serverRequest.method());
+    options.setAbsoluteURI(HttpServerRequestEncoder.absoluteUrl(serverRequest));
+    options.setHeaders(HopByHopHeaders.copyEndToEnd(serverRequest.headers()));
+    // Pin the TCP target; the absolute URI still drives the request line / Host header.
+    options.setServer(target);
+    return options;
+  }
+
+  private void proxyDirect(
+      HttpServerRequest serverRequest,
+      HttpServerResponse serverResponse,
+      HttpClientRequest clientRequest,
+      long contentLength,
+      Handler<Throwable> errorHandler) {
+    metrics.httpRequestsDirect.inc();
+    clientRequest.exceptionHandler(errorHandler);
+    if (contentLength < 0) {
+      clientRequest.setChunked(true);
+    }
+    if (contentLength == 0) {
+      clientRequest
+          .end()
+          .onSuccess(v -> awaitDirectResponse(serverResponse, clientRequest, errorHandler))
+          .onFailure(errorHandler);
+      return;
+    }
+    pipeFactory
+        .newPipe(serverRequest)
+        .to(clientRequest)
+        .onSuccess(v -> awaitDirectResponse(serverResponse, clientRequest, errorHandler))
+        .onFailure(errorHandler);
+  }
+
+  private void awaitDirectResponse(
+      HttpServerResponse serverResponse,
+      HttpClientRequest clientRequest,
+      Handler<Throwable> errorHandler) {
+    clientRequest
+        .response()
+        .onSuccess(clientResponse -> writeDirectResponse(serverResponse, clientResponse, errorHandler))
+        .onFailure(errorHandler);
+  }
+
+  private void writeDirectResponse(
+      HttpServerResponse serverResponse,
+      HttpClientResponse clientResponse,
+      Handler<Throwable> errorHandler) {
+    int status = clientResponse.statusCode();
+    metrics.recordHttpStatus(status);
+    serverResponse.setStatusCode(status).setStatusMessage(clientResponse.statusMessage());
+    HopByHopHeaders.forEachEndToEnd(clientResponse.headers(), serverResponse::putHeader);
+    long contentLength = HttpRequestUtils.contentLength(clientResponse.headers());
+    if (contentLength == 0) {
+      serverResponse.end();
+      return;
+    }
+    if (contentLength < 0) {
+      serverResponse.setChunked(true);
+    }
+    downPipeFactory
+        .newPipe(clientResponse)
+        .to(serverResponse)
+        .onSuccess(v -> serverResponse.end())
+        .onFailure(errorHandler);
+  }
+
+  // ---- remote path: protobuf-wrapped request to the remote proxy ----
+
+  private void proxyToRemote(
+      HttpServerRequest serverRequest,
+      HttpServerResponse serverResponse,
+      long contentLength,
+      Handler<Throwable> errorHandler) {
+    metrics.httpRequestsRemote.inc();
+    HttpProto.Request proto = httpServerRequestEncoder.apply(serverRequest);
+    if (log.isDebugEnabled()) {
+      log.debug("{} :{}{}", Constants.rightArrow(), Constants.lineSeparator(), proto);
+    }
+
+    RequestOptions requestOptions = new RequestOptions();
+    requestOptions.setMethod(HttpMethod.POST);
+    requestOptions.setServer(remoteProvider.apply(serverRequest));
+    putHeaders(proto, contentLength, requestOptions);
 
     httpClient
         .request(requestOptions)
@@ -145,7 +268,7 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
                     .onFailure(errorHandler);
                 return;
               }
-              clientRequest.write(Prefix.serializeToBuffer(proto));
+              clientRequest.write(prefixData);
               pipeFactory
                   .newPipe(serverRequest)
                   .to(clientRequest)

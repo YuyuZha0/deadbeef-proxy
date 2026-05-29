@@ -18,6 +18,10 @@ A Vert.x-based HTTP/HTTPS forwarding proxy with HMAC-authenticated framing betwe
 
 `deadbeef-proxy` is a two-process system. The **client** runs on your local machine and exposes a single HTTP proxy port that your browser (or any HTTP/HTTPS client) connects to. The **server** runs on a remote host and forwards traffic onward to the real upstream. The two processes talk over a **single port**: HTTP-proxy traffic is sent as a `POST` whose body carries a Protobuf-framed envelope prefixed with the magic `0xDEADBEEF`, while HTTPS tunnels use **standard HTTP CONNECT** upgraded to raw TCP via Vert.x's `HttpServerRequest.toNetSocket(...)`. Each request is authenticated with an HMAC-SHA256 signature over a per-request nonce and timestamp, carried uniformly in the `X-Deadbeef-Auth` header; secrets never appear on the wire. Both sides use Netty native transports (`epoll` on Linux, `kqueue` on macOS) when available.
 
+### Direct-first routing (client)
+
+By default the client tries to reach the target **directly** first — a plain HTTP request for HTTP, a raw TCP tunnel for HTTPS `CONNECT` — and only falls back to the remote server when the direct connection cannot be established. A per-target reachability gate (`ReachabilityGate`) remembers the verdict for a few minutes so known-unreachable destinations fast-fail straight to the remote path instead of being re-probed on every request, and the fallback happens at connect time (before any request body is consumed) so it is transparent. Set `proxyAll: true` to disable this and route everything through the remote server. The `proxy.{http,https}.*.{direct,remote}` metrics show the split.
+
 ### Security defenses (server-side)
 
 - **HMAC-SHA256 authentication** with constant-time signature comparison (`MessageDigest.isEqual`).
@@ -76,6 +80,9 @@ secretId: an-id           # must match a (secretId, secretKey) pair on the serve
 secretKey: a-key
 
 # Optional
+proxyAll: false           # false (default): try the target directly first, fall back to the remote
+                          #   server only when the direct connection fails. true: always tunnel
+                          #   everything through the remote server (disables the direct-first path).
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver
 adminPort: 18080          # opens the live metrics dashboard on http://127.0.0.1:18080 (omit to disable)

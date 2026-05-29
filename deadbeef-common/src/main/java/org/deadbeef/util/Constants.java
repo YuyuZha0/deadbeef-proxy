@@ -7,7 +7,6 @@ import java.util.concurrent.TimeUnit;
 public final class Constants {
 
   private static final AsciiString AUTH_HEADER_NAME = AsciiString.cached("X-Deadbeef-Auth");
-  private static final int REQUEST_TIMEOUT = (int) TimeUnit.SECONDS.toMillis(20);
 
   private Constants() {
     throw new IllegalStateException();
@@ -27,9 +26,5 @@ public final class Constants {
 
   public static CharSequence authHeaderName() {
     return AUTH_HEADER_NAME;
-  }
-
-  public static int requestTimeout() {
-    return REQUEST_TIMEOUT;
   }
 }

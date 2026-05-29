@@ -17,6 +17,12 @@ public final class ClientConfig implements ProxyConfig {
   private int remotePort;
   private int localPort;
 
+  /**
+   * When true, every request is sent through the remote proxy and the local direct-first attempt is
+   * disabled. Defaults to false (try the target directly, fall back to the remote proxy).
+   */
+  private boolean proxyAll;
+
   /** Optional: when set, the client binds a metrics dashboard HttpServer on 127.0.0.1:adminPort. */
   private Integer adminPort;
 
