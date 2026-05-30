@@ -128,7 +128,7 @@ public final class App extends ProxyVerticle<ClientConfig> {
     Integer adminPort = config.getAdminPort();
     if (adminPort != null) {
       MetricsDashboardServer dashboard =
-          new MetricsDashboardServer(getVertx(), metricRegistry, adminPort);
+          new MetricsDashboardServer(getVertx(), proxyMetrics, adminPort);
       dashboard.start();
       registerCloseHook(dashboard::close);
     }

@@ -1,11 +1,9 @@
 package org.deadbeef.metrics;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import io.vertx.core.json.JsonObject;
 import java.util.concurrent.TimeUnit;
@@ -131,47 +129,45 @@ public class ProxyMetricsTest {
     assertEquals(1, m.httpRequestDuration.getCount());
   }
 
-  // ---- toJson snapshot serialisation (migrated from MetricsSnapshot) ----
+  // ---- toJson snapshot serialisation ----
+
+  private static ProxyMetrics newMetrics() {
+    return new ProxyMetrics(new MetricRegistry());
+  }
 
   @Test
-  public void emptyRegistryProducesEmptyBucketsAndTimestamp() {
-    JsonObject json = ProxyMetrics.toJson(new MetricRegistry());
+  public void eagerlyRegisteredSeriesArePresentFromStart() {
+    JsonObject json = newMetrics().toJson();
     assertTrue(json.getLong("ts") > 0);
-    assertEquals(0, json.getJsonObject("counters").size());
-    assertEquals(0, json.getJsonObject("gauges").size());
-    assertEquals(0, json.getJsonObject("meters").size());
-    assertEquals(0, json.getJsonObject("timers").size());
+    assertTrue(json.getJsonObject("counters").containsKey("proxy.http.requests.total"));
+    assertTrue(json.getJsonObject("counters").containsKey("proxy.https.tunnels.direct"));
+    assertTrue(json.getJsonObject("gauges").containsKey("proxy.http.requests.in_flight"));
+    assertTrue(json.getJsonObject("meters").containsKey("proxy.http.bytes.up"));
+    assertTrue(json.getJsonObject("timers").containsKey("proxy.http.request.duration"));
   }
 
   @Test
   public void counterValueIsExposed() {
-    MetricRegistry r = new MetricRegistry();
-    r.counter("proxy.http.requests.total").inc(42);
-    JsonObject json = ProxyMetrics.toJson(r);
+    ProxyMetrics m = newMetrics();
+    m.httpRequestsTotal.inc(42);
+    JsonObject json = m.toJson();
     assertEquals(42L, (long) json.getJsonObject("counters").getLong("proxy.http.requests.total"));
   }
 
   @Test
-  public void numericGaugeIsExposed() {
-    MetricRegistry r = new MetricRegistry();
-    r.register("proxy.http.requests.in_flight", (Gauge<Integer>) () -> 7);
-    JsonObject json = ProxyMetrics.toJson(r);
-    assertEquals(7, (int) json.getJsonObject("gauges").getInteger("proxy.http.requests.in_flight"));
-  }
-
-  @Test
-  public void stringGaugeFallsBackToToString() {
-    MetricRegistry r = new MetricRegistry();
-    r.register("proxy.custom", (Gauge<String>) () -> "alive");
-    JsonObject json = ProxyMetrics.toJson(r);
-    assertEquals("alive", json.getJsonObject("gauges").getString("proxy.custom"));
+  public void gaugeReflectsInFlight() {
+    ProxyMetrics m = newMetrics();
+    m.httpInFlightInc();
+    m.httpInFlightInc();
+    JsonObject json = m.toJson();
+    assertEquals(2, (int) json.getJsonObject("gauges").getInteger("proxy.http.requests.in_flight"));
   }
 
   @Test
   public void meterEmitsCountAndRateFields() {
-    MetricRegistry r = new MetricRegistry();
-    r.meter("proxy.http.bytes.up").mark(1024);
-    JsonObject json = ProxyMetrics.toJson(r);
+    ProxyMetrics m = newMetrics();
+    m.httpBytesUp.mark(1024);
+    JsonObject json = m.toJson();
     JsonObject meter = json.getJsonObject("meters").getJsonObject("proxy.http.bytes.up");
     assertNotNull(meter);
     assertEquals(1024L, (long) meter.getLong("count"));
@@ -183,12 +179,12 @@ public class ProxyMetricsTest {
 
   @Test
   public void timerEmitsPercentilesAndRatesInMillis() {
-    MetricRegistry r = new MetricRegistry();
-    r.timer("proxy.http.request.duration").update(50, TimeUnit.MILLISECONDS);
-    r.timer("proxy.http.request.duration").update(100, TimeUnit.MILLISECONDS);
-    r.timer("proxy.http.request.duration").update(150, TimeUnit.MILLISECONDS);
+    ProxyMetrics m = newMetrics();
+    m.httpRequestDuration.update(50, TimeUnit.MILLISECONDS);
+    m.httpRequestDuration.update(100, TimeUnit.MILLISECONDS);
+    m.httpRequestDuration.update(150, TimeUnit.MILLISECONDS);
 
-    JsonObject json = ProxyMetrics.toJson(r);
+    JsonObject json = m.toJson();
     JsonObject timer = json.getJsonObject("timers").getJsonObject("proxy.http.request.duration");
     assertNotNull(timer);
     assertEquals(3L, (long) timer.getLong("count"));
@@ -198,23 +194,5 @@ public class ProxyMetricsTest {
     // Min should be ~50ms, max ~150ms (durations emitted in ms).
     assertTrue(timer.getDouble("min") >= 49.0 && timer.getDouble("min") <= 51.0);
     assertTrue(timer.getDouble("max") >= 149.0 && timer.getDouble("max") <= 151.0);
-  }
-
-  @Test
-  public void histogramFoldedIntoMeters() {
-    MetricRegistry r = new MetricRegistry();
-    r.histogram("proxy.size").update(10);
-    r.histogram("proxy.size").update(20);
-    JsonObject json = ProxyMetrics.toJson(r);
-    JsonObject h = json.getJsonObject("meters").getJsonObject("proxy.size");
-    assertNotNull(h);
-    assertEquals(2L, (long) h.getLong("count"));
-    // Histograms have no rate fields.
-    assertFalse(h.containsKey("m1"));
-  }
-
-  @Test(expected = NullPointerException.class)
-  public void toJsonRejectsNullRegistry() {
-    ProxyMetrics.toJson(null);
   }
 }

@@ -10,6 +10,7 @@ import io.vertx.ext.unit.Async;
 import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
+import org.deadbeef.metrics.ProxyMetrics;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -28,9 +29,9 @@ public class MetricsDashboardServerTest {
   }
 
   private MetricsDashboardServer startServer(Vertx vertx, TestContext ctx, Async ready) {
-    MetricRegistry registry = new MetricRegistry();
-    registry.counter("proxy.http.requests.total").inc(7);
-    MetricsDashboardServer dash = new MetricsDashboardServer(vertx, registry, 0);
+    ProxyMetrics metrics = new ProxyMetrics(new MetricRegistry());
+    metrics.httpRequestsTotal.inc(7);
+    MetricsDashboardServer dash = new MetricsDashboardServer(vertx, metrics, 0);
     dash.start().onFailure(ctx::fail).onSuccess(srv -> ready.complete());
     return dash;
   }
@@ -38,11 +39,11 @@ public class MetricsDashboardServerTest {
   // The alternate setup: capture the HttpServer directly so we know its bound port.
   private void runWithServer(
       Vertx vertx, TestContext ctx, java.util.function.Consumer<Integer> body) {
-    MetricRegistry registry = new MetricRegistry();
-    registry.counter("proxy.http.requests.total").inc(7);
-    registry.meter("proxy.http.bytes.up").mark(2048);
+    ProxyMetrics metrics = new ProxyMetrics(new MetricRegistry());
+    metrics.httpRequestsTotal.inc(7);
+    metrics.httpBytesUp.mark(2048);
 
-    MetricsDashboardServer dash = new MetricsDashboardServer(vertx, registry, 0);
+    MetricsDashboardServer dash = new MetricsDashboardServer(vertx, metrics, 0);
     Async serverUp = ctx.async();
     // Use reflection-free trick: replace server start with our own HttpServer for the test.
     // But to keep parity with the production code path, we accept that the server exposes

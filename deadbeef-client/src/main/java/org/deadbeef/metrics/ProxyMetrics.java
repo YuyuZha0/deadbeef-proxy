@@ -2,13 +2,11 @@ package org.deadbeef.metrics;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
-import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import io.vertx.core.json.JsonObject;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.NonNull;
@@ -82,11 +80,13 @@ public final class ProxyMetrics {
     registry.register("proxy.https.tunnels.active", (Gauge<Integer>) httpsActive::get);
   }
 
-  // ---- gauge helpers (in-flight tracking) ----
+  // ---- dashboard snapshot serialisation ----
 
   /**
-   * Serialise a {@link MetricRegistry} snapshot into a Vert.x {@link JsonObject} for the dashboard's
-   * polling endpoint. Hand-rolled so we don't pull Dropwizard's heavy Jackson module.
+   * Serialise the current values of these metrics into a Vert.x {@link JsonObject} for the
+   * dashboard's polling endpoint. Reads the metric fields directly — the set is fixed and known, so
+   * it avoids iterating the registry — and is hand-rolled so we don't pull Dropwizard's heavy Jackson
+   * module.
    *
    * <p>Output shape (stable across releases — the dashboard's JS depends on it):
    *
@@ -100,95 +100,70 @@ public final class ProxyMetrics {
    * }
    * }</pre>
    *
-   * <p>Timer durations are emitted in <b>milliseconds</b> regardless of the timer's internal time
-   * unit; rates are events-per-second.
+   * <p>Timer durations are emitted in <b>milliseconds</b>; rates are events-per-second.
    */
-  public static JsonObject toJson(@NonNull MetricRegistry registry) {
-    JsonObject root = new JsonObject();
-    root.put("ts", System.currentTimeMillis());
-    root.put("counters", counters(registry));
-    root.put("gauges", gauges(registry));
-    root.put("meters", meters(registry));
-    root.put("timers", timers(registry));
-    return root;
+  public JsonObject toJson() {
+    JsonObject counters =
+        new JsonObject()
+            .put("proxy.http.requests.total", httpRequestsTotal.getCount())
+            .put("proxy.http.requests.failed", httpRequestsFailed.getCount())
+            .put("proxy.http.requests.direct", httpRequestsDirect.getCount())
+            .put("proxy.http.requests.remote", httpRequestsRemote.getCount())
+            .put("proxy.http.responses.2xx", httpResponse2xx.getCount())
+            .put("proxy.http.responses.3xx", httpResponse3xx.getCount())
+            .put("proxy.http.responses.4xx", httpResponse4xx.getCount())
+            .put("proxy.http.responses.5xx", httpResponse5xx.getCount())
+            .put("proxy.https.tunnels.opened", httpsTunnelsOpened.getCount())
+            .put("proxy.https.tunnels.failed", httpsTunnelsFailed.getCount())
+            .put("proxy.https.tunnels.direct", httpsDirectTunnels.getCount())
+            .put("proxy.https.tunnels.remote", httpsRemoteTunnels.getCount());
+    JsonObject gauges =
+        new JsonObject()
+            .put("proxy.http.requests.in_flight", httpInFlight.get())
+            .put("proxy.https.tunnels.active", httpsActive.get());
+    JsonObject meters =
+        new JsonObject()
+            .put("proxy.http.bytes.up", meterJson(httpBytesUp))
+            .put("proxy.http.bytes.down", meterJson(httpBytesDown))
+            .put("proxy.https.bytes.up", meterJson(httpsBytesUp))
+            .put("proxy.https.bytes.down", meterJson(httpsBytesDown));
+    JsonObject timers =
+        new JsonObject()
+            .put("proxy.http.request.duration", timerJson(httpRequestDuration))
+            .put("proxy.https.connect.duration", timerJson(httpsConnectDuration));
+    return new JsonObject()
+        .put("ts", System.currentTimeMillis())
+        .put("counters", counters)
+        .put("gauges", gauges)
+        .put("meters", meters)
+        .put("timers", timers);
   }
 
-  private static JsonObject counters(MetricRegistry registry) {
-    JsonObject out = new JsonObject();
-    for (Map.Entry<String, Counter> e : registry.getCounters().entrySet()) {
-      out.put(e.getKey(), e.getValue().getCount());
-    }
-    return out;
+  private static JsonObject meterJson(Meter m) {
+    return new JsonObject()
+        .put("count", m.getCount())
+        .put("m1", m.getOneMinuteRate())
+        .put("m5", m.getFiveMinuteRate())
+        .put("m15", m.getFifteenMinuteRate())
+        .put("mean", m.getMeanRate());
   }
 
-  @SuppressWarnings("rawtypes")
-  private static JsonObject gauges(MetricRegistry registry) {
-    JsonObject out = new JsonObject();
-    for (Map.Entry<String, Gauge> e : registry.getGauges().entrySet()) {
-      Object value = e.getValue().getValue();
-      if (value instanceof Number n) {
-        out.put(e.getKey(), n);
-      } else if (value != null) {
-        out.put(e.getKey(), value.toString());
-      }
-    }
-    return out;
-  }
-
-  private static JsonObject meters(MetricRegistry registry) {
-    JsonObject out = new JsonObject();
-    for (Map.Entry<String, Meter> e : registry.getMeters().entrySet()) {
-      Meter m = e.getValue();
-      out.put(
-          e.getKey(),
-          new JsonObject()
-              .put("count", m.getCount())
-              .put("m1", m.getOneMinuteRate())
-              .put("m5", m.getFiveMinuteRate())
-              .put("m15", m.getFifteenMinuteRate())
-              .put("mean", m.getMeanRate()));
-    }
-    // Histograms folded into the same bucket as a degenerate case (count + snapshot, no rates).
-    for (Map.Entry<String, Histogram> e : registry.getHistograms().entrySet()) {
-      Histogram h = e.getValue();
-      Snapshot s = h.getSnapshot();
-      out.put(
-          e.getKey(),
-          new JsonObject()
-              .put("count", h.getCount())
-              .put("min", s.getMin())
-              .put("max", s.getMax())
-              .put("mean", s.getMean())
-              .put("p50", s.getMedian())
-              .put("p95", s.get95thPercentile())
-              .put("p99", s.get99thPercentile()));
-    }
-    return out;
-  }
-
-  private static JsonObject timers(MetricRegistry registry) {
-    JsonObject out = new JsonObject();
-    for (Map.Entry<String, Timer> e : registry.getTimers().entrySet()) {
-      Timer t = e.getValue();
-      Snapshot s = t.getSnapshot();
-      out.put(
-          e.getKey(),
-          new JsonObject()
-              .put("count", t.getCount())
-              .put("m1", t.getOneMinuteRate())
-              .put("m5", t.getFiveMinuteRate())
-              .put("m15", t.getFifteenMinuteRate())
-              .put("meanRate", t.getMeanRate())
-              // Durations are nanos in Snapshot; emit millis.
-              .put("p50", toMillis(s.getMedian()))
-              .put("p75", toMillis(s.get75thPercentile()))
-              .put("p95", toMillis(s.get95thPercentile()))
-              .put("p99", toMillis(s.get99thPercentile()))
-              .put("min", toMillis(s.getMin()))
-              .put("max", toMillis(s.getMax()))
-              .put("mean", toMillis(s.getMean())));
-    }
-    return out;
+  private static JsonObject timerJson(Timer t) {
+    Snapshot s = t.getSnapshot();
+    return new JsonObject()
+        .put("count", t.getCount())
+        .put("m1", t.getOneMinuteRate())
+        .put("m5", t.getFiveMinuteRate())
+        .put("m15", t.getFifteenMinuteRate())
+        .put("meanRate", t.getMeanRate())
+        // Durations are nanos in Snapshot; emit millis.
+        .put("p50", toMillis(s.getMedian()))
+        .put("p75", toMillis(s.get75thPercentile()))
+        .put("p95", toMillis(s.get95thPercentile()))
+        .put("p99", toMillis(s.get99thPercentile()))
+        .put("min", toMillis(s.getMin()))
+        .put("max", toMillis(s.getMax()))
+        .put("mean", toMillis(s.getMean()));
   }
 
   private static double toMillis(double nanos) {
