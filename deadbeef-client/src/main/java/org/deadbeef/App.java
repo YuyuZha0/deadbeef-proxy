@@ -26,8 +26,10 @@ import org.deadbeef.client.MetricsDashboardServer;
 import org.deadbeef.client.ProxyClientRequestHandler;
 import org.deadbeef.client.ReachabilityGate;
 import org.deadbeef.metrics.ProxyMetrics;
+import org.deadbeef.route.DefaultRoutePolicy;
 import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
+import org.deadbeef.route.RoutePolicy;
 
 @Slf4j
 public final class App extends ProxyVerticle<ClientConfig> {
@@ -91,8 +93,10 @@ public final class App extends ProxyVerticle<ClientConfig> {
 
     // Rule lists: local_only -> always direct, remote_only -> always remote. Unlisted hosts fall
     // through to the ReachabilityGate. Bundled as client classpath resources.
-    HostNameMatcher localOnly = HostNameMatcher.fromClasspathFile(getVertx(), "local_only.txt");
-    HostNameMatcher remoteOnly = HostNameMatcher.fromClasspathFile(getVertx(), "remote_only.txt");
+    HostNameMatcher localOnly = HostNameMatcher.fromClasspathFile("local_only.txt");
+    HostNameMatcher remoteOnly = HostNameMatcher.fromClasspathFile("remote_only.txt");
+    RoutePolicy routePolicy =
+        new DefaultRoutePolicy(localOnly, remoteOnly, proxyAll, config.getRemoteHost());
 
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
@@ -102,9 +106,8 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 remoteProvider,
                 OriginProvider.ofAuthority(80),
                 httpReachabilityGate,
-                localOnly,
-                remoteOnly,
-                proxyAll,
+                routePolicy,
+                config.getLocalPort(),
                 proxyAuthenticationGenerator,
                 proxyMetrics),
             new ConnectTunnelHandler(
@@ -113,9 +116,8 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 remoteProvider,
                 OriginProvider.ofAuthority(443),
                 tunnelReachabilityGate,
-                localOnly,
-                remoteOnly,
-                proxyAll,
+                routePolicy,
+                config.getLocalPort(),
                 proxyAuthenticationGenerator,
                 proxyMetrics));
     server.requestHandler(requestHandler);
@@ -123,6 +125,11 @@ public final class App extends ProxyVerticle<ClientConfig> {
     registerCloseHook(server::close);
     registerCloseHook(httpClient::close);
     registerCloseHook(netClient::close);
+    registerCloseHookSync(
+        () -> {
+          localOnly.close();
+          remoteOnly.close();
+        });
 
     server.listen(
         config.getLocalPort(),

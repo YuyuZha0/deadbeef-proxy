@@ -6,28 +6,12 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import io.vertx.ext.unit.junit.RunTestOnContext;
-import io.vertx.ext.unit.junit.VertxUnitRunner;
 import java.util.List;
 import java.util.regex.Pattern;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 
-/**
- * {@code match} is synchronous, so assertions are direct. {@link RunTestOnContext} only manages the
- * {@link Vertx} lifecycle (the matcher needs one for its close hook).
- */
-@RunWith(VertxUnitRunner.class)
+/** {@code match} is synchronous and the matcher needs no Vert.x, so assertions are direct. */
 public class HostNameMatcherImplTest {
-
-  @Rule public RunTestOnContext rule = new RunTestOnContext();
-
-  private Vertx vertx() {
-    return rule.vertx();
-  }
 
   // ---- fnMatchToRegex: pure translation, cross-checked against java.util.Pattern ----
 
@@ -71,7 +55,7 @@ public class HostNameMatcherImplTest {
 
   @Test
   public void matchesWildcardSubdomainsButNotApexOrGluedSuffix() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("*.example.com"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("*.example.com"));
     assertTrue(matcher.match("a.example.com"));
     assertTrue(matcher.match("a.b.example.com"));
     assertFalse(matcher.match("example.com"));
@@ -79,14 +63,22 @@ public class HostNameMatcherImplTest {
   }
 
   @Test
+  public void trailingDotFqdnIsNormalized() {
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("*.example.com", "baidu.com"));
+    assertTrue(matcher.match("a.example.com.")); // absolute-form FQDN
+    assertTrue(matcher.match("baidu.com."));
+    assertFalse(matcher.match("example.com.")); // apex still not matched by *.example.com
+  }
+
+  @Test
   public void matchingIsCaseInsensitive() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("*.Example.COM"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("*.Example.COM"));
     assertTrue(matcher.match("API.Example.com"));
   }
 
   @Test
   public void exactHostNameMatch() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("api.test"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("api.test"));
     assertTrue(matcher.match("api.test"));
     assertFalse(matcher.match("api.test.evil.com"));
     assertFalse(matcher.match("xapi.test"));
@@ -94,13 +86,13 @@ public class HostNameMatcherImplTest {
 
   @Test
   public void emptyHostNameIsFalse() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("*.example.com"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("*.example.com"));
     assertFalse(matcher.match(""));
   }
 
   @Test
   public void exactIpMatch() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("127.0.0.1", "::1"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("127.0.0.1", "::1"));
     assertTrue(matcher.match("127.0.0.1"));
     assertTrue(matcher.match("::1"));
     assertFalse(matcher.match("127.0.0.2"));
@@ -108,35 +100,31 @@ public class HostNameMatcherImplTest {
 
   @Test
   public void ipMatchIsCanonicalAcrossSpellings() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("::1"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("::1"));
     assertTrue(matcher.match("0:0:0:0:0:0:0:1")); // expanded form of ::1
   }
 
   @Test
   public void ipOnlyListConstructsAndRejectsHostNames() {
     // No patterns -> must not crash compiling an empty Hyperscan database, and host names miss.
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of("10.0.0.1", "192.168.1.1"));
+    HostNameMatcher matcher = HostNameMatcher.create(List.of("10.0.0.1", "192.168.1.1"));
     assertTrue(matcher.match("10.0.0.1"));
     assertFalse(matcher.match("example.com"));
   }
 
   @Test
   public void closedMatcherThrows() {
-    HostNameMatcherImpl matcher = HostNameMatcherImpl.create(vertx(), List.of("*.example.com"));
-    Promise<Void> firstClose = Promise.promise();
-    matcher.close(firstClose);
-    assertTrue(firstClose.future().succeeded());
+    HostNameMatcherImpl matcher = HostNameMatcherImpl.create(List.of("*.example.com"));
+    matcher.close();
 
     assertThrows(IllegalStateException.class, () -> matcher.match("a.example.com"));
 
-    Promise<Void> secondClose = Promise.promise(); // idempotent
-    matcher.close(secondClose);
-    assertTrue(secondClose.future().succeeded());
+    matcher.close(); // idempotent
   }
 
   @Test
   public void emptyListYieldsEmptyMatcher() {
-    HostNameMatcher matcher = HostNameMatcher.create(vertx(), List.of());
+    HostNameMatcher matcher = HostNameMatcher.create(List.of());
     assertSame(EmptyMatcher.INSTANCE, matcher);
     assertFalse(matcher.match("anything.com"));
   }

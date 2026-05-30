@@ -8,10 +8,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.net.InetAddresses;
 import io.netty.util.concurrent.FastThreadLocal;
-import io.vertx.core.Closeable;
-import io.vertx.core.Promise;
-import io.vertx.core.Vertx;
-import io.vertx.core.impl.VertxInternal;
+import java.io.Closeable;
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -28,7 +26,14 @@ import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
-final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
+final class HostNameMatcherImpl implements HostNameMatcher {
+
+  private static final EnumSet<ExpressionFlag> DEFAULT_FLAGS =
+      EnumSet.of(
+          ExpressionFlag.UTF8,
+          ExpressionFlag.ALLOWEMPTY,
+          ExpressionFlag.SINGLEMATCH,
+          ExpressionFlag.CASELESS);
 
   private final AtomicBoolean closed = new AtomicBoolean(false);
   private final ReadWriteLock closeLock = new ReentrantReadWriteLock(false);
@@ -54,7 +59,7 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
         }
       };
 
-  private static void closeQuietly(java.io.Closeable closeable) {
+  private static void closeQuietly(Closeable closeable) {
     if (closeable != null) {
       try {
         closeable.close();
@@ -64,7 +69,7 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
     }
   }
 
-  static HostNameMatcherImpl create(Vertx vertx, List<String> hostNames) {
+  static HostNameMatcherImpl create(List<String> hostNames) {
     Set<String> ipAddresses = new HashSet<>();
     List<Expression> expressions = new ArrayList<>();
     for (String hostName : hostNames) {
@@ -84,10 +89,7 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
         throw new RuntimeException("Failed to create HostNameMatcherImpl", e);
       }
     }
-    VertxInternal vertxInternal = (VertxInternal) vertx;
-    HostNameMatcherImpl matcher = new HostNameMatcherImpl(ipAddresses, database);
-    vertxInternal.addCloseHook(matcher);
-    return matcher;
+    return new HostNameMatcherImpl(ipAddresses, database);
   }
 
   /** Canonical text form of an IP literal so equivalent spellings compare equal. */
@@ -98,13 +100,7 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
   @VisibleForTesting
   static Expression mapToExpression(String hostNamePattern) {
     String regex = fnMatchToRegex(hostNamePattern);
-    return new Expression(
-        regex,
-        EnumSet.of(
-            ExpressionFlag.UTF8,
-            ExpressionFlag.ALLOWEMPTY,
-            ExpressionFlag.SINGLEMATCH,
-            ExpressionFlag.CASELESS));
+    return new Expression(regex, DEFAULT_FLAGS);
   }
 
   /**
@@ -115,8 +111,8 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
   @VisibleForTesting
   static String fnMatchToRegex(String pattern) {
     StringBuilder sb = new StringBuilder(pattern.length() + 8).append('^');
-    for (int i = 0; i < pattern.length(); i++) {
-      char c = pattern.charAt(i);
+    char[] cs = pattern.toCharArray();
+    for (char c : cs) {
       switch (c) {
         case '*' -> sb.append(".*");
         case '?' -> sb.append('.');
@@ -128,31 +124,39 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
     return sb.append('$').toString();
   }
 
-  @Override
-  public boolean match(String hostName) {
+  private void ensureOpen() {
     Preconditions.checkState(!closed.get(), "Matcher is closed");
-    if (StringUtils.isEmpty(hostName)) {
-      return false;
-    }
-    if (InetAddresses.isInetAddress(hostName)) {
-      return ipAddresses.contains(canonicalIp(hostName));
-    }
-    if (database == null) {
+  }
+
+  @Override
+  public boolean matchName(String hostName) {
+    ensureOpen();
+    String host;
+    if (StringUtils.isEmpty(hostName)
+        || StringUtils.isEmpty(host = StringUtils.stripEnd(hostName, "."))
+        || database == null) {
       return false; // No patterns, so non-IP host names don't match
     }
     Lock readLock = closeLock.readLock();
     try {
       readLock.lock();
-      Preconditions.checkState(!closed.get(), "Matcher is closed");
+      ensureOpen();
       Scanner s = scanner.get();
-      return s.hasMatch(database, hostName);
+      return s.hasMatch(database, host);
     } finally {
       readLock.unlock();
     }
   }
 
   @Override
-  public void close(Promise<Void> completion) {
+  public boolean matchAddress(InetAddress ipAddress) {
+    return ipAddresses != null
+        && !ipAddresses.isEmpty()
+        && ipAddresses.contains(InetAddresses.toAddrString(ipAddress));
+  }
+
+  @Override
+  public void close() {
     if (closed.compareAndSet(false, true)) {
       if (database != null) {
         Lock writeLock = closeLock.writeLock();
@@ -165,6 +169,5 @@ final class HostNameMatcherImpl implements HostNameMatcher, Closeable {
         }
       }
     }
-    completion.complete();
   }
 }

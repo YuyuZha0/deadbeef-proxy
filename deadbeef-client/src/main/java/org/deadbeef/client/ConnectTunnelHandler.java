@@ -16,8 +16,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.metrics.ProxyMetrics;
-import org.deadbeef.route.HostNameMatcher;
+import org.deadbeef.route.Authorities;
 import org.deadbeef.route.OriginProvider;
+import org.deadbeef.route.RoutePolicy;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Tunnels;
@@ -39,9 +40,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
   private final OriginProvider remoteProvider;
   private final OriginProvider targetProvider;
   private final ReachabilityGate<NetSocket> reachabilityGate;
-  private final HostNameMatcher localOnly;
-  private final HostNameMatcher remoteOnly;
-  private final boolean proxyAll;
+  private final RoutePolicy routePolicy;
+  private final int localPort;
   private final ProxyAuthenticationGenerator generator;
   private final ProxyMetrics metrics;
   private final PipeFactory upPipeFactory;
@@ -53,9 +53,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
       @NonNull OriginProvider remoteProvider,
       @NonNull OriginProvider targetProvider,
       @NonNull ReachabilityGate<NetSocket> reachabilityGate,
-      @NonNull HostNameMatcher localOnly,
-      @NonNull HostNameMatcher remoteOnly,
-      boolean proxyAll,
+      @NonNull RoutePolicy routePolicy,
+      int localPort,
       @NonNull ProxyAuthenticationGenerator generator,
       @NonNull ProxyMetrics metrics) {
     this.httpClient = httpClient;
@@ -63,9 +62,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
     this.remoteProvider = remoteProvider;
     this.targetProvider = targetProvider;
     this.reachabilityGate = reachabilityGate;
-    this.localOnly = localOnly;
-    this.remoteOnly = remoteOnly;
-    this.proxyAll = proxyAll;
+    this.routePolicy = routePolicy;
+    this.localPort = localPort;
     this.generator = generator;
     this.metrics = metrics;
     this.upPipeFactory = new MetricPipeFactory(metrics.httpsBytesUp);
@@ -93,20 +91,35 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
             });
 
     serverRequest.pause();
-
-    if (proxyAll) {
+    // Resolve and classify the target synchronously. Both targetProvider.apply (malformed CONNECT
+    // authority) and routePolicy.decide -> matcher.match (IllegalStateException once a matcher is
+    // closed at shutdown) can throw; on any failure hand off to the remote proxy rather than leak
+    // the exception and leave the paused request hanging with the connect timer running.
+    SocketAddress target;
+    RoutePolicy.Decision decision;
+    try {
+      target = targetProvider.apply(serverRequest);
+      decision = routePolicy.decide(target.host());
+    } catch (RuntimeException e) {
       tunnelViaRemote(serverRequest, stopConnectTimerOnce, errorHandler);
       return;
     }
 
-    SocketAddress target = targetProvider.apply(serverRequest);
-    String host = target.host();
-    if (remoteOnly.match(host)) {
+    if (Authorities.isSelfTarget(target, localPort)) {
+      // Target is this client's own listen address: a direct tunnel would loop back into this
+      // handler, and the remote proxy can't reach it either. Reject instead of routing.
+      stopConnectTimerOnce.handle(null);
+      metrics.httpsTunnelsFailed.inc();
+      serverRequest.response().setStatusCode(508).setStatusMessage("Loop Detected").end();
+      return;
+    }
+
+    if (decision == RoutePolicy.Decision.REMOTE) {
       // Known-blocked: skip the doomed direct attempt.
       tunnelViaRemote(serverRequest, stopConnectTimerOnce, errorHandler);
       return;
     }
-    if (localOnly.match(host)) {
+    if (decision == RoutePolicy.Decision.DIRECT) {
       // Hard-pinned direct: never use the remote proxy; a connect failure surfaces as an error.
       netClient
           .connect(target)
@@ -119,7 +132,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    // Unlisted: try a direct TCP tunnel first; fall back to the remote proxy on connect failure.
+    // Unlisted (GATE): try a direct TCP tunnel first; fall back to the remote proxy on connect
+    // failure.
     reachabilityGate
         .apply(target, () -> netClient.connect(target))
         .onSuccess(

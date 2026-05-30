@@ -1,6 +1,5 @@
 package org.deadbeef.route;
 
-import io.vertx.core.Vertx;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -72,14 +71,12 @@ public class HostNameMatcherEndToEndBenchmark {
 
   private final List<String> patternStrings = HostNameMatcherBenchmark.buildPatterns();
 
-  private Vertx vertx;
   private HostNameMatcher hyperscanMatcher;
   private Pattern combinedRegex;
 
   @Setup(Level.Trial)
   public void setUp() {
-    vertx = Vertx.vertx();
-    hyperscanMatcher = HostNameMatcher.create(vertx, patternStrings);
+    hyperscanMatcher = HostNameMatcher.create(patternStrings);
 
     StringBuilder alternation = new StringBuilder("^(?:");
     for (int i = 0; i < patternStrings.size(); i++) {
@@ -94,9 +91,8 @@ public class HostNameMatcherEndToEndBenchmark {
   }
 
   @TearDown(Level.Trial)
-  public void tearDown() throws Exception {
-    // Closing Vert.x runs the matcher's close hook and, on event-loop thread exit, frees scanners.
-    vertx.close().toCompletionStage().toCompletableFuture().get(5, TimeUnit.SECONDS);
+  public void tearDown() {
+    hyperscanMatcher.close(); // frees the native Hyperscan database
   }
 
   @Benchmark

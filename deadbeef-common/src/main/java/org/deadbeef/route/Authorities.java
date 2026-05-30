@@ -2,6 +2,7 @@ package org.deadbeef.route;
 
 import com.google.common.base.Preconditions;
 import com.google.common.net.HostAndPort;
+import com.google.common.net.InetAddresses;
 import io.vertx.core.net.SocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -49,4 +50,29 @@ public final class Authorities {
             : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
     return SocketAddress.inetSocketAddress(port, host);
   }
+
+  /**
+   * Whether {@code host} denotes the loopback interface — a {@code 127.0.0.0/8} or {@code ::1} IP
+   * literal, or the literal name {@code "localhost"}. Non-blocking (no DNS); other names that happen
+   * to resolve to loopback are not detected.
+   */
+  public static boolean isLoopback(String host) {
+    if (StringUtils.isEmpty(host)) {
+      return false;
+    }
+    if ("localhost".equalsIgnoreCase(host)) {
+      return true;
+    }
+    return InetAddresses.isInetAddress(host) && InetAddresses.forString(host).isLoopbackAddress();
+  }
+
+  /**
+   * Whether {@code target} is the proxy's own loopback listen address ({@code localPort} on a
+   * loopback host). Routing such a target back through the proxy would loop, so callers reject it.
+   * The cheap port comparison short-circuits before the host classification.
+   */
+  public static boolean isSelfTarget(SocketAddress target, int localPort) {
+    return target.port() == localPort && isLoopback(target.host());
+  }
 }
+

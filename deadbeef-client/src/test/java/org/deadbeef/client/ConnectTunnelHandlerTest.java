@@ -16,19 +16,30 @@ import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import java.time.Duration;
-import java.util.List;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
-import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
+import org.deadbeef.route.RoutePolicy;
 import org.deadbeef.util.Constants;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mockito;
 
+/**
+ * Tests the handler's dispatch for each {@link RoutePolicy.Decision}. RoutePolicy is mocked, so
+ * these tests do not depend on the real routing logic (that lives in {@code DefaultRoutePolicyTest}).
+ */
 @RunWith(VertxUnitRunner.class)
 public class ConnectTunnelHandlerTest {
 
   @Rule public RunTestOnContext rule = new RunTestOnContext();
+
+  /** A RoutePolicy stub that always returns {@code decision} for any host. */
+  private static RoutePolicy decision(RoutePolicy.Decision decision) {
+    RoutePolicy policy = Mockito.mock(RoutePolicy.class);
+    Mockito.when(policy.decide(Mockito.anyString())).thenReturn(decision);
+    return policy;
+  }
 
   /** Stub proxy server: behaviour decided by {@code onConnect}. */
   private Future<HttpServer> startStubServer(
@@ -45,22 +56,17 @@ public class ConnectTunnelHandlerTest {
     return server.listen(0).map(server);
   }
 
-  /** Raw TCP echo server, used as a "direct" upstream target. */
+  /** Raw TCP echo server, used as a direct or remote-tunnel upstream. */
   private Future<NetServer> startEchoServer(Vertx vertx) {
     NetServer server = vertx.createNetServer();
     server.connectHandler(sock -> sock.handler(sock::write));
     return server.listen(0).map(server);
   }
 
-  private HostNameMatcher empty(Vertx vertx) {
-    return HostNameMatcher.create(vertx, List.of());
-  }
-
-  /** Spin up a local HttpServer hosting the ConnectTunnelHandler under test. */
   private Future<HttpServer> startClientFacingServer(
-      Vertx vertx, HttpClient httpClient, NetClient netClient, int remotePort, boolean proxyAll) {
-    return startClientFacingServer(
-        vertx, httpClient, netClient, remotePort, proxyAll, empty(vertx), empty(vertx));
+      Vertx vertx, HttpClient httpClient, NetClient netClient, int remotePort, RoutePolicy policy) {
+    // localPort 0 is never a real target port, so the self-target guard never fires here.
+    return startClientFacingServer(vertx, httpClient, netClient, remotePort, 0, policy);
   }
 
   private Future<HttpServer> startClientFacingServer(
@@ -68,9 +74,8 @@ public class ConnectTunnelHandlerTest {
       HttpClient httpClient,
       NetClient netClient,
       int remotePort,
-      boolean proxyAll,
-      HostNameMatcher localOnly,
-      HostNameMatcher remoteOnly) {
+      int localPort,
+      RoutePolicy policy) {
     ConnectTunnelHandler handler =
         new ConnectTunnelHandler(
             httpClient,
@@ -78,9 +83,8 @@ public class ConnectTunnelHandlerTest {
             OriginProvider.ofStatic(remotePort, "127.0.0.1"),
             OriginProvider.ofAuthority(443),
             new ReachabilityGate<>(Duration.ofMinutes(5), 1_000),
-            localOnly,
-            remoteOnly,
-            proxyAll,
+            policy,
+            localPort,
             new ProxyAuthenticationGenerator("id", "key"),
             new org.deadbeef.metrics.ProxyMetrics(new MetricRegistry()));
     HttpServer server = vertx.createHttpServer();
@@ -88,18 +92,90 @@ public class ConnectTunnelHandlerTest {
     return server.listen(0).map(server);
   }
 
-  private Future<HttpServer> startClientFacingServer(
-      Vertx vertx, HttpClient httpClient, int remotePort) {
-    // Default helper for remote-path tests: always proxy, never try direct.
-    return startClientFacingServer(vertx, httpClient, vertx.createNetClient(), remotePort, true);
+  private io.vertx.core.http.RequestOptions connectRequest(HttpServer facing, String authority) {
+    return new io.vertx.core.http.RequestOptions()
+        .setMethod(HttpMethod.CONNECT)
+        .setHost("127.0.0.1")
+        .setPort(facing.actualPort())
+        .setURI(authority);
+  }
+
+  /** Drive a CONNECT, then echo "ping" through the tunnel and complete when it comes back. */
+  private void expectEchoTunnel(TestContext ctx, Async done, HttpClient browser, HttpServer facing, String authority) {
+    browser
+        .request(connectRequest(facing, authority))
+        .compose(req -> req.connect())
+        .onSuccess(
+            resp -> {
+              ctx.assertEquals(HttpResponseStatus.OK.code(), resp.statusCode());
+              NetSocket sock = resp.netSocket();
+              Buffer received = Buffer.buffer();
+              sock.handler(
+                  b -> {
+                    received.appendBuffer(b);
+                    if (received.toString().equals("ping")) {
+                      done.complete();
+                    }
+                  });
+              sock.write("ping");
+            })
+        .onFailure(ctx::fail);
   }
 
   @Test
-  public void forwardsAuthHeaderToStubServer(TestContext ctx) {
+  public void directDecisionTunnelsToTarget(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
+    startEchoServer(vertx)
+        .onFailure(ctx::fail)
+        .onSuccess(
+            echo ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        0,
+                        decision(RoutePolicy.Decision.DIRECT))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            expectEchoTunnel(
+                                ctx,
+                                done,
+                                vertx.createHttpClient(),
+                                facing,
+                                "127.0.0.1:" + echo.actualPort())));
+  }
 
-    // The stub proxy: asserts auth header is present, then sends 200 + acts as echo upstream.
+  @Test
+  public void gateFallsBackToRemoteWhenDirectConnectFails(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    startStubServer(
+            vertx,
+            req ->
+                req.toNetSocket().onSuccess(sock -> sock.handler(sock::write)).onFailure(ctx::fail))
+        .onFailure(ctx::fail)
+        .onSuccess(
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        decision(RoutePolicy.Decision.GATE))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            // direct target 127.0.0.1:1 is refused -> gate falls back to remote
+                            expectEchoTunnel(
+                                ctx, done, vertx.createHttpClient(), facing, "127.0.0.1:1")));
+  }
+
+  @Test
+  public void remoteDecisionForwardsAuthHeaderAndTunnels(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
     startStubServer(
             vertx,
             req -> {
@@ -112,337 +188,204 @@ public class ConnectTunnelHandlerTest {
             })
         .onFailure(ctx::fail)
         .onSuccess(
-            stub -> {
-              HttpClient httpClient = vertx.createHttpClient();
-              startClientFacingServer(vertx, httpClient, stub.actualPort())
-                  .onFailure(ctx::fail)
-                  .onSuccess(
-                      facing -> {
-                        HttpClient browser = vertx.createHttpClient();
-                        browser
-                            .request(
-                                new io.vertx.core.http.RequestOptions()
-                                    .setMethod(HttpMethod.CONNECT)
-                                    .setHost("127.0.0.1")
-                                    .setPort(facing.actualPort())
-                                    .setURI("example.com:443"))
-                            .compose(req -> req.connect())
-                            .onSuccess(
-                                resp -> {
-                                  ctx.assertEquals(HttpResponseStatus.OK.code(), resp.statusCode());
-                                  NetSocket sock = resp.netSocket();
-                                  Buffer received = Buffer.buffer();
-                                  sock.handler(
-                                      b -> {
-                                        received.appendBuffer(b);
-                                        if (received.toString().equals("ping")) {
-                                          done.complete();
-                                        }
-                                      });
-                                  sock.write("ping");
-                                })
-                            .onFailure(ctx::fail);
-                      });
-            });
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        decision(RoutePolicy.Decision.REMOTE))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            expectEchoTunnel(
+                                ctx, done, vertx.createHttpClient(), facing, "example.com:443")));
   }
 
   @Test
-  public void propagatesUpstreamErrorStatusToBrowser(TestContext ctx) {
+  public void remoteDecisionPropagatesUpstreamErrorStatusToBrowser(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
-
-    // Stub proxy always returns 502.
     startStubServer(vertx, req -> req.response().setStatusCode(502).end("bad upstream"))
         .onFailure(ctx::fail)
         .onSuccess(
-            stub -> {
-              HttpClient httpClient = vertx.createHttpClient();
-              startClientFacingServer(vertx, httpClient, stub.actualPort())
-                  .onFailure(ctx::fail)
-                  .onSuccess(
-                      facing -> {
-                        HttpClient browser = vertx.createHttpClient();
-                        browser
-                            .request(
-                                new io.vertx.core.http.RequestOptions()
-                                    .setMethod(HttpMethod.CONNECT)
-                                    .setHost("127.0.0.1")
-                                    .setPort(facing.actualPort())
-                                    .setURI("example.com:443"))
-                            .compose(req -> req.connect())
-                            .onSuccess(
-                                resp -> {
-                                  ctx.assertEquals(502, resp.statusCode());
-                                  done.complete();
-                                })
-                            .onFailure(ctx::fail);
-                      });
-            });
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        decision(RoutePolicy.Decision.REMOTE))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            vertx
+                                .createHttpClient()
+                                .request(connectRequest(facing, "example.com:443"))
+                                .compose(req -> req.connect())
+                                .onSuccess(
+                                    resp -> {
+                                      ctx.assertEquals(502, resp.statusCode());
+                                      done.complete();
+                                    })
+                                .onFailure(ctx::fail)));
+  }
+
+  @Test
+  public void directDecisionErrorsWithoutFallback(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    // Remote proxy must NOT be contacted for a DIRECT decision.
+    startStubServer(vertx, req -> ctx.fail("remote proxy must not be used for a DIRECT decision"))
+        .onFailure(ctx::fail)
+        .onSuccess(
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        decision(RoutePolicy.Decision.DIRECT))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            vertx
+                                .createHttpClient()
+                                .request(connectRequest(facing, "127.0.0.1:1")) // dead direct
+                                .compose(req -> req.connect())
+                                .onSuccess(
+                                    resp -> {
+                                      ctx.assertEquals(
+                                          HttpResponseStatus.BAD_GATEWAY.code(), resp.statusCode());
+                                      done.complete();
+                                    })
+                                .onFailure(ctx::fail)));
+  }
+
+  @Test
+  public void selfTargetIsRejectedWithLoopDetected(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+    int localPort = 7777;
+    // The remote proxy must NOT be contacted for a self-target.
+    startStubServer(vertx, req -> ctx.fail("self-target must not be routed anywhere"))
+        .onFailure(ctx::fail)
+        .onSuccess(
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        localPort,
+                        decision(RoutePolicy.Decision.DIRECT))
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            vertx
+                                .createHttpClient()
+                                // target == the client's own loopback listen address
+                                .request(connectRequest(facing, "127.0.0.1:" + localPort))
+                                .compose(req -> req.connect())
+                                .onSuccess(
+                                    resp -> {
+                                      ctx.assertEquals(508, resp.statusCode());
+                                      done.complete();
+                                    })
+                                .onFailure(ctx::fail)));
   }
 
   @Test
   public void rejectsNonConnectMethod(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
-    HttpClient httpClient = vertx.createHttpClient();
-    startClientFacingServer(vertx, httpClient, 0)
-        .onFailure(ctx::fail)
-        .onSuccess(
-            facing -> {
-              HttpClient browser = vertx.createHttpClient();
-              browser
-                  .request(
-                      new io.vertx.core.http.RequestOptions()
-                          .setMethod(HttpMethod.GET)
-                          .setHost("127.0.0.1")
-                          .setPort(facing.actualPort())
-                          .setURI("/"))
-                  .compose(req -> req.send())
-                  .onSuccess(
-                      resp -> {
-                        ctx.assertEquals(400, resp.statusCode());
-                        done.complete();
-                      })
-                  .onFailure(ctx::fail);
-            });
-  }
-
-  @Test
-  public void tunnelsDirectlyToTargetWithoutProxy(TestContext ctx) {
-    Vertx vertx = rule.vertx();
-    Async done = ctx.async();
-
-    // No remote stub at all; the direct echo server is the CONNECT target.
-    startEchoServer(vertx)
-        .onFailure(ctx::fail)
-        .onSuccess(
-            echo -> {
-              HttpClient httpClient = vertx.createHttpClient();
-              startClientFacingServer(vertx, httpClient, vertx.createNetClient(), 0, false)
-                  .onFailure(ctx::fail)
-                  .onSuccess(
-                      facing -> {
-                        HttpClient browser = vertx.createHttpClient();
-                        browser
-                            .request(
-                                new io.vertx.core.http.RequestOptions()
-                                    .setMethod(HttpMethod.CONNECT)
-                                    .setHost("127.0.0.1")
-                                    .setPort(facing.actualPort())
-                                    .setURI("127.0.0.1:" + echo.actualPort()))
-                            .compose(req -> req.connect())
-                            .onSuccess(
-                                resp -> {
-                                  ctx.assertEquals(HttpResponseStatus.OK.code(), resp.statusCode());
-                                  NetSocket sock = resp.netSocket();
-                                  Buffer received = Buffer.buffer();
-                                  sock.handler(
-                                      b -> {
-                                        received.appendBuffer(b);
-                                        if (received.toString().equals("ping")) {
-                                          done.complete();
-                                        }
-                                      });
-                                  sock.write("ping");
-                                })
-                            .onFailure(ctx::fail);
-                      });
-            });
-  }
-
-  @Test
-  public void fallsBackToRemoteWhenDirectConnectFails(TestContext ctx) {
-    Vertx vertx = rule.vertx();
-    Async done = ctx.async();
-
-    // Remote stub echoes; the direct target is a dead port, forcing the fallback path.
-    startStubServer(
+    startClientFacingServer(
             vertx,
-            req ->
-                req.toNetSocket().onSuccess(sock -> sock.handler(sock::write)).onFailure(ctx::fail))
+            vertx.createHttpClient(),
+            vertx.createNetClient(),
+            0,
+            decision(RoutePolicy.Decision.GATE))
         .onFailure(ctx::fail)
         .onSuccess(
-            stub -> {
-              HttpClient httpClient = vertx.createHttpClient();
-              startClientFacingServer(
-                      vertx, httpClient, vertx.createNetClient(), stub.actualPort(), false)
-                  .onFailure(ctx::fail)
-                  .onSuccess(
-                      facing -> {
-                        HttpClient browser = vertx.createHttpClient();
-                        browser
-                            .request(
-                                new io.vertx.core.http.RequestOptions()
-                                    .setMethod(HttpMethod.CONNECT)
-                                    .setHost("127.0.0.1")
-                                    .setPort(facing.actualPort())
-                                    // 127.0.0.1:1 — nothing listens here, so direct connect fails.
-                                    .setURI("127.0.0.1:1"))
-                            .compose(req -> req.connect())
-                            .onSuccess(
-                                resp -> {
-                                  ctx.assertEquals(HttpResponseStatus.OK.code(), resp.statusCode());
-                                  NetSocket sock = resp.netSocket();
-                                  Buffer received = Buffer.buffer();
-                                  sock.handler(
-                                      b -> {
-                                        received.appendBuffer(b);
-                                        if (received.toString().equals("ping")) {
-                                          done.complete();
-                                        }
-                                      });
-                                  sock.write("ping");
-                                })
-                            .onFailure(ctx::fail);
-                      });
-            });
-  }
-
-  @Test
-  public void remoteOnlyHostForcedToRemoteEvenWhenDirectReachable(TestContext ctx) {
-    Vertx vertx = rule.vertx();
-    Async done = ctx.async();
-
-    startEchoServer(vertx) // reachable direct target
-        .onFailure(ctx::fail)
-        .onSuccess(
-            echo ->
-                // Remote stub returns 502 so we can tell the tunnel went remote, not direct.
-                startStubServer(vertx, req -> req.response().setStatusCode(502).end())
-                    .onFailure(ctx::fail)
+            facing ->
+                vertx
+                    .createHttpClient()
+                    .request(
+                        new io.vertx.core.http.RequestOptions()
+                            .setMethod(HttpMethod.GET)
+                            .setHost("127.0.0.1")
+                            .setPort(facing.actualPort())
+                            .setURI("/"))
+                    .compose(req -> req.send())
                     .onSuccess(
-                        stub -> {
-                          HttpClient httpClient = vertx.createHttpClient();
-                          HostNameMatcher remoteOnly =
-                              HostNameMatcher.create(vertx, List.of("127.0.0.1"));
-                          startClientFacingServer(
-                                  vertx,
-                                  httpClient,
-                                  vertx.createNetClient(),
-                                  stub.actualPort(),
-                                  false,
-                                  empty(vertx),
-                                  remoteOnly)
-                              .onFailure(ctx::fail)
-                              .onSuccess(
-                                  facing -> {
-                                    HttpClient browser = vertx.createHttpClient();
-                                    browser
-                                        .request(
-                                            new io.vertx.core.http.RequestOptions()
-                                                .setMethod(HttpMethod.CONNECT)
-                                                .setHost("127.0.0.1")
-                                                .setPort(facing.actualPort())
-                                                .setURI("127.0.0.1:" + echo.actualPort()))
-                                        .compose(req -> req.connect())
-                                        .onSuccess(
-                                            resp -> {
-                                              // 502 from the remote stub, not 200 from the echo.
-                                              ctx.assertEquals(502, resp.statusCode());
-                                              done.complete();
-                                            })
-                                        .onFailure(ctx::fail);
-                                  });
-                        }));
+                        resp -> {
+                          ctx.assertEquals(400, resp.statusCode());
+                          done.complete();
+                        })
+                    .onFailure(ctx::fail));
   }
 
   @Test
-  public void localOnlyHostTunnelsDirectAndNeverUsesRemote(TestContext ctx) {
+  public void malformedAuthorityIsHandledNotHung(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
-
-    // Remote stub must NOT be contacted for a local_only host.
-    startStubServer(vertx, req -> ctx.fail("remote proxy must not be used for a local_only host"))
+    // A malformed authority makes targetProvider.apply throw before decide() is reached; the handler
+    // must catch it and hand off to the remote proxy rather than leak the exception and hang.
+    startStubServer(vertx, req -> req.response().setStatusCode(502).end())
         .onFailure(ctx::fail)
         .onSuccess(
             stub ->
-                startEchoServer(vertx)
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        decision(RoutePolicy.Decision.GATE))
                     .onFailure(ctx::fail)
                     .onSuccess(
-                        echo -> {
-                          HttpClient httpClient = vertx.createHttpClient();
-                          HostNameMatcher localOnly =
-                              HostNameMatcher.create(vertx, List.of("127.0.0.1"));
-                          startClientFacingServer(
-                                  vertx,
-                                  httpClient,
-                                  vertx.createNetClient(),
-                                  stub.actualPort(),
-                                  false,
-                                  localOnly,
-                                  empty(vertx))
-                              .onFailure(ctx::fail)
-                              .onSuccess(
-                                  facing -> {
-                                    HttpClient browser = vertx.createHttpClient();
-                                    browser
-                                        .request(
-                                            new io.vertx.core.http.RequestOptions()
-                                                .setMethod(HttpMethod.CONNECT)
-                                                .setHost("127.0.0.1")
-                                                .setPort(facing.actualPort())
-                                                .setURI("127.0.0.1:" + echo.actualPort()))
-                                        .compose(req -> req.connect())
-                                        .onSuccess(
-                                            resp -> {
-                                              ctx.assertEquals(
-                                                  HttpResponseStatus.OK.code(), resp.statusCode());
-                                              NetSocket sock = resp.netSocket();
-                                              Buffer received = Buffer.buffer();
-                                              sock.handler(
-                                                  b -> {
-                                                    received.appendBuffer(b);
-                                                    if (received.toString().equals("ping")) {
-                                                      done.complete();
-                                                    }
-                                                  });
-                                              sock.write("ping");
-                                            })
-                                        .onFailure(ctx::fail);
-                                  });
-                        }));
+                        facing ->
+                            vertx
+                                .createHttpClient()
+                                .request(connectRequest(facing, "a:b:c")) // unparseable authority
+                                .compose(req -> req.connect())
+                                .onSuccess(
+                                    resp -> {
+                                      ctx.assertEquals(502, resp.statusCode());
+                                      done.complete();
+                                    })
+                                .onFailure(ctx::fail)));
   }
 
   @Test
-  public void localOnlyHostPinnedDirectNoRemoteFallback(TestContext ctx) {
+  public void decideFailureFallsBackToRemote(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
+    RoutePolicy throwing = Mockito.mock(RoutePolicy.class);
+    Mockito.when(throwing.decide(Mockito.anyString()))
+        .thenThrow(new IllegalStateException("policy unavailable"));
 
-    // Remote stub must NOT be contacted; the dead direct target must surface as an error.
-    startStubServer(vertx, req -> ctx.fail("remote proxy must not be used for a local_only host"))
+    startStubServer(vertx, req -> req.response().setStatusCode(502).end())
         .onFailure(ctx::fail)
         .onSuccess(
-            stub -> {
-              HttpClient httpClient = vertx.createHttpClient();
-              HostNameMatcher localOnly = HostNameMatcher.create(vertx, List.of("127.0.0.1"));
-              startClientFacingServer(
-                      vertx,
-                      httpClient,
-                      vertx.createNetClient(),
-                      stub.actualPort(),
-                      false,
-                      localOnly,
-                      empty(vertx))
-                  .onFailure(ctx::fail)
-                  .onSuccess(
-                      facing -> {
-                        HttpClient browser = vertx.createHttpClient();
-                        browser
-                            .request(
-                                new io.vertx.core.http.RequestOptions()
-                                    .setMethod(HttpMethod.CONNECT)
-                                    .setHost("127.0.0.1")
-                                    .setPort(facing.actualPort())
-                                    .setURI("127.0.0.1:1")) // dead direct target
-                            .compose(req -> req.connect())
-                            .onSuccess(
-                                resp -> {
-                                  ctx.assertEquals(
-                                      HttpResponseStatus.BAD_GATEWAY.code(), resp.statusCode());
-                                  done.complete();
-                                })
-                            .onFailure(ctx::fail);
-                      });
-            });
+            stub ->
+                startClientFacingServer(
+                        vertx,
+                        vertx.createHttpClient(),
+                        vertx.createNetClient(),
+                        stub.actualPort(),
+                        throwing)
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        facing ->
+                            vertx
+                                .createHttpClient()
+                                .request(connectRequest(facing, "example.com:443"))
+                                .compose(req -> req.connect())
+                                .onSuccess(
+                                    resp -> {
+                                      ctx.assertEquals(502, resp.statusCode());
+                                      done.complete();
+                                    })
+                                .onFailure(ctx::fail)));
   }
 }

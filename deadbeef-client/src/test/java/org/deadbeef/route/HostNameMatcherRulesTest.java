@@ -3,21 +3,14 @@ package org.deadbeef.route;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import io.vertx.ext.unit.junit.RunTestOnContext;
-import io.vertx.ext.unit.junit.VertxUnitRunner;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 
 /** Verifies the bundled routing lists load (comments/blanks skipped) and match as intended. */
-@RunWith(VertxUnitRunner.class)
 public class HostNameMatcherRulesTest {
-
-  @Rule public RunTestOnContext rule = new RunTestOnContext();
 
   @Test
   public void localOnlyMatchesChinaMajorsNotForeign() {
-    HostNameMatcher m = HostNameMatcher.fromClasspathFile(rule.vertx(), "local_only.txt");
+    HostNameMatcher m = HostNameMatcher.fromClasspathFile("local_only.txt");
     assertTrue(m.match("baidu.com"));
     assertTrue(m.match("www.baidu.com"));
     assertTrue(m.match("api.weibo.com"));
@@ -27,8 +20,19 @@ public class HostNameMatcherRulesTest {
   }
 
   @Test
+  public void inlineAndWholeLineCommentsAreStripped() {
+    HostNameMatcher m = HostNameMatcher.fromClasspathFile("test_hosts.txt");
+    assertTrue(m.match("foo.example.com")); // inline comment stripped
+    assertTrue(m.match("bar.example.com"));
+    assertTrue(m.match("baz.example.com")); // 'baz.example.com#tight' -> 'baz.example.com'
+    // comment text must not have leaked into a pattern
+    assertFalse(m.match("inline"));
+    assertFalse(m.match("comment"));
+  }
+
+  @Test
   public void remoteOnlyMatchesBlockedNotChina() {
-    HostNameMatcher m = HostNameMatcher.fromClasspathFile(rule.vertx(), "remote_only.txt");
+    HostNameMatcher m = HostNameMatcher.fromClasspathFile("remote_only.txt");
     assertTrue(m.match("www.google.com"));
     assertTrue(m.match("youtube.com"));
     assertTrue(m.match("api.twitter.com"));

@@ -24,8 +24,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.metrics.ProxyMetrics;
 import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.route.HostNameMatcher;
+import org.deadbeef.route.Authorities;
 import org.deadbeef.route.OriginProvider;
+import org.deadbeef.route.RoutePolicy;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
 import org.deadbeef.streams.Prefix;
@@ -57,9 +58,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
   private final OriginProvider remoteProvider;
   private final OriginProvider targetProvider;
   private final ReachabilityGate<HttpClientRequest> reachabilityGate;
-  private final HostNameMatcher localOnly;
-  private final HostNameMatcher remoteOnly;
-  private final boolean proxyAll;
+  private final RoutePolicy routePolicy;
+  private final int localPort;
 
   private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
   private final ProxyMetrics metrics;
@@ -70,9 +70,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       @NonNull OriginProvider remoteProvider,
       @NonNull OriginProvider targetProvider,
       @NonNull ReachabilityGate<HttpClientRequest> reachabilityGate,
-      @NonNull HostNameMatcher localOnly,
-      @NonNull HostNameMatcher remoteOnly,
-      boolean proxyAll,
+      @NonNull RoutePolicy routePolicy,
+      int localPort,
       @NonNull ProxyAuthenticationGenerator generator,
       @NonNull ProxyMetrics metrics) {
     this.proxyStreamPrefixVisitor =
@@ -81,9 +80,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
     this.remoteProvider = remoteProvider;
     this.targetProvider = targetProvider;
     this.reachabilityGate = reachabilityGate;
-    this.localOnly = localOnly;
-    this.remoteOnly = remoteOnly;
-    this.proxyAll = proxyAll;
+    this.routePolicy = routePolicy;
+    this.localPort = localPort;
     this.proxyAuthenticationGenerator = generator;
     this.metrics = metrics;
     this.pipeFactory = new MetricPipeFactory(metrics.httpBytesUp, true, true);
@@ -143,29 +141,37 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
 
     long contentLength = HttpRequestUtils.contentLength(serverRequest.headers());
 
-    if (proxyAll) {
-      proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
-      return;
-    }
-
+    // Resolve and classify the target synchronously. Both targetProvider.apply (malformed
+    // authority) and routePolicy.decide -> matcher.match (IllegalStateException once a matcher is
+    // closed at shutdown) can throw; on any failure hand off to the remote proxy rather than leak
+    // the exception and leave the paused request hanging.
     SocketAddress target;
+    RoutePolicy.Decision decision;
     try {
       target = targetProvider.apply(serverRequest);
+      decision = routePolicy.decide(target.host());
     } catch (RuntimeException e) {
-      // Cannot determine a direct target — let the remote proxy handle it.
       proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
       return;
     }
 
-    String host = target.host();
-    if (remoteOnly.match(host)) {
+    if (Authorities.isSelfTarget(target, localPort)) {
+      // Target is this client's own listen address: serving it (direct -> connect to self) loops,
+      // and tunnelling it through the remote proxy can't help. Reject instead of routing.
+      metrics.httpRequestsFailed.inc();
+      finishHandler.handle(null);
+      serverResponse.setStatusCode(508).setStatusMessage("Loop Detected").end();
+      return;
+    }
+
+    if (decision == RoutePolicy.Decision.REMOTE) {
       // Known-blocked: skip the doomed direct attempt.
       proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
       return;
     }
 
     RequestOptions directOptions = buildDirectOptions(serverRequest, target);
-    if (localOnly.match(host)) {
+    if (decision == RoutePolicy.Decision.DIRECT) {
       // Hard-pinned direct: never use the remote proxy; a connect failure surfaces as an error.
       httpClient
           .request(directOptions)
@@ -177,7 +183,7 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    // Unlisted: try direct first; fall back to the remote proxy on connect failure.
+    // Unlisted (GATE): try direct first; fall back to the remote proxy on connect failure.
     reachabilityGate
         .apply(target, () -> httpClient.request(directOptions))
         .onSuccess(
