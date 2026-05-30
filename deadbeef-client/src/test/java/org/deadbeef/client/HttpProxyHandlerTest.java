@@ -208,7 +208,12 @@ public class HttpProxyHandlerTest {
                         HostNameMatcher remoteOnly =
                             HostNameMatcher.create(vertx, List.of("127.0.0.1"));
                         startClientFacingServer(
-                                vertx, httpClient, remote.actualPort(), false, empty(vertx), remoteOnly)
+                                vertx,
+                                httpClient,
+                                remote.actualPort(),
+                                false,
+                                empty(vertx),
+                                remoteOnly)
                             .onFailure(ctx::fail)
                             .onSuccess(
                                 facing -> {
@@ -218,7 +223,8 @@ public class HttpProxyHandlerTest {
                                   HttpClient browser = vertx.createHttpClient();
                                   browser
                                       .request(
-                                          browserRequest(facingAddr, "127.0.0.1", origin.actualPort()))
+                                          browserRequest(
+                                              facingAddr, "127.0.0.1", origin.actualPort()))
                                       .compose(req -> req.send())
                                       .onSuccess(
                                           resp -> {

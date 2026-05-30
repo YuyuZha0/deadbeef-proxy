@@ -32,10 +32,7 @@ public class HttpHeaderDecoderTest {
   @Test
   public void allLowerCaseMode() {
     HttpProto.Headers headers =
-        HttpProto.Headers.newBuilder()
-            .setAccept("*/*")
-            .setAcceptEncoding("gzip")
-            .build();
+        HttpProto.Headers.newBuilder().setAccept("*/*").setAcceptEncoding("gzip").build();
 
     MultiMap multiMap = new HttpHeaderDecoder(true).apply(headers);
 
@@ -84,8 +81,7 @@ public class HttpHeaderDecoderTest {
 
   @Test
   public void unsetWellKnownFieldOmitted() {
-    HttpProto.Headers headers =
-        HttpProto.Headers.newBuilder().setAccept("*/*").build();
+    HttpProto.Headers headers = HttpProto.Headers.newBuilder().setAccept("*/*").build();
 
     Map<String, String> collected = new HashMap<>();
     new HttpHeaderDecoder().visit(headers, collected::put);

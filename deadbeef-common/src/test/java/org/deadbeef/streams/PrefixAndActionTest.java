@@ -88,8 +88,7 @@ public class PrefixAndActionTest {
   @Test(expected = IllegalStateException.class)
   public void acceptWithNullHandlerThrowsOnRepeat() {
     PrefixAndAction<WriteStream<Buffer>> p =
-        new PrefixAndAction<>(
-            Buffer.buffer(), (ws, h) -> h.handle(Future.succeededFuture()));
+        new PrefixAndAction<>(Buffer.buffer(), (ws, h) -> h.handle(Future.succeededFuture()));
 
     p.accept(mockSink(), null);
     p.accept(mockSink(), null);

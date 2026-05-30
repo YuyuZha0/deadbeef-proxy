@@ -59,8 +59,7 @@ public class HttpRequestUtilsTest {
   @Test
   public void errorMappingOtherReturnsBadGateway() {
     assertEquals(
-        HttpResponseStatus.BAD_GATEWAY,
-        HttpRequestUtils.errorMapping(new IOException("boom")));
+        HttpResponseStatus.BAD_GATEWAY, HttpRequestUtils.errorMapping(new IOException("boom")));
     assertEquals(
         HttpResponseStatus.BAD_GATEWAY, HttpRequestUtils.errorMapping(new RuntimeException()));
   }

@@ -34,6 +34,10 @@ public class ProxyMetricsTest {
     "proxy.https.tunnels.active",
   };
 
+  private static ProxyMetrics newMetrics() {
+    return new ProxyMetrics(new MetricRegistry());
+  }
+
   @Test
   public void allMetricsRegisterEagerly() {
     MetricRegistry registry = new MetricRegistry();
@@ -112,6 +116,8 @@ public class ProxyMetricsTest {
     new ProxyMetrics(null);
   }
 
+  // ---- toJson snapshot serialisation ----
+
   @Test
   public void timersAreUsable() {
     MetricRegistry registry = new MetricRegistry();
@@ -127,12 +133,6 @@ public class ProxyMetricsTest {
     }
     assertNotNull(m.httpRequestDuration.getSnapshot());
     assertEquals(1, m.httpRequestDuration.getCount());
-  }
-
-  // ---- toJson snapshot serialisation ----
-
-  private static ProxyMetrics newMetrics() {
-    return new ProxyMetrics(new MetricRegistry());
   }
 
   @Test

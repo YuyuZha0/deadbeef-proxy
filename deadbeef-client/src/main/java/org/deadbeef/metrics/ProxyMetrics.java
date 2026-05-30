@@ -26,7 +26,8 @@ import lombok.NonNull;
  *   <li>{@code tunnels.*} — count/state of HTTPS tunnels
  *   <li>{@code *.direct} / {@code *.remote} — served directly vs. via the remote proxy
  *   <li>{@code responses.[2-5]xx} — status-code distribution
- *   <li>{@code bytes.up} / {@code bytes.down} — wire throughput, browser→upstream / upstream→browser
+ *   <li>{@code bytes.up} / {@code bytes.down} — wire throughput, browser→upstream /
+ *       upstream→browser
  *   <li>{@code *.duration} — full-cycle timer
  * </ul>
  */
@@ -67,8 +68,7 @@ public final class ProxyMetrics {
     this.httpRequestDuration = registry.timer("proxy.http.request.duration");
     this.httpBytesUp = registry.meter("proxy.http.bytes.up");
     this.httpBytesDown = registry.meter("proxy.http.bytes.down");
-    registry.register(
-        "proxy.http.requests.in_flight", (Gauge<Integer>) httpInFlight::get);
+    registry.register("proxy.http.requests.in_flight", (Gauge<Integer>) httpInFlight::get);
 
     this.httpsTunnelsOpened = registry.counter("proxy.https.tunnels.opened");
     this.httpsTunnelsFailed = registry.counter("proxy.https.tunnels.failed");
@@ -82,11 +82,42 @@ public final class ProxyMetrics {
 
   // ---- dashboard snapshot serialisation ----
 
+  private static JsonObject meterJson(Meter m) {
+    return new JsonObject()
+        .put("count", m.getCount())
+        .put("m1", m.getOneMinuteRate())
+        .put("m5", m.getFiveMinuteRate())
+        .put("m15", m.getFifteenMinuteRate())
+        .put("mean", m.getMeanRate());
+  }
+
+  private static JsonObject timerJson(Timer t) {
+    Snapshot s = t.getSnapshot();
+    return new JsonObject()
+        .put("count", t.getCount())
+        .put("m1", t.getOneMinuteRate())
+        .put("m5", t.getFiveMinuteRate())
+        .put("m15", t.getFifteenMinuteRate())
+        .put("meanRate", t.getMeanRate())
+        // Durations are nanos in Snapshot; emit millis.
+        .put("p50", toMillis(s.getMedian()))
+        .put("p75", toMillis(s.get75thPercentile()))
+        .put("p95", toMillis(s.get95thPercentile()))
+        .put("p99", toMillis(s.get99thPercentile()))
+        .put("min", toMillis(s.getMin()))
+        .put("max", toMillis(s.getMax()))
+        .put("mean", toMillis(s.getMean()));
+  }
+
+  private static double toMillis(double nanos) {
+    return nanos / (double) TimeUnit.MILLISECONDS.toNanos(1);
+  }
+
   /**
    * Serialise the current values of these metrics into a Vert.x {@link JsonObject} for the
    * dashboard's polling endpoint. Reads the metric fields directly — the set is fixed and known, so
-   * it avoids iterating the registry — and is hand-rolled so we don't pull Dropwizard's heavy Jackson
-   * module.
+   * it avoids iterating the registry — and is hand-rolled so we don't pull Dropwizard's heavy
+   * Jackson module.
    *
    * <p>Output shape (stable across releases — the dashboard's JS depends on it):
    *
@@ -137,37 +168,6 @@ public final class ProxyMetrics {
         .put("gauges", gauges)
         .put("meters", meters)
         .put("timers", timers);
-  }
-
-  private static JsonObject meterJson(Meter m) {
-    return new JsonObject()
-        .put("count", m.getCount())
-        .put("m1", m.getOneMinuteRate())
-        .put("m5", m.getFiveMinuteRate())
-        .put("m15", m.getFifteenMinuteRate())
-        .put("mean", m.getMeanRate());
-  }
-
-  private static JsonObject timerJson(Timer t) {
-    Snapshot s = t.getSnapshot();
-    return new JsonObject()
-        .put("count", t.getCount())
-        .put("m1", t.getOneMinuteRate())
-        .put("m5", t.getFiveMinuteRate())
-        .put("m15", t.getFifteenMinuteRate())
-        .put("meanRate", t.getMeanRate())
-        // Durations are nanos in Snapshot; emit millis.
-        .put("p50", toMillis(s.getMedian()))
-        .put("p75", toMillis(s.get75thPercentile()))
-        .put("p95", toMillis(s.get95thPercentile()))
-        .put("p99", toMillis(s.get99thPercentile()))
-        .put("min", toMillis(s.getMin()))
-        .put("max", toMillis(s.getMax()))
-        .put("mean", toMillis(s.getMean()));
-  }
-
-  private static double toMillis(double nanos) {
-    return nanos / (double) TimeUnit.MILLISECONDS.toNanos(1);
   }
 
   public void httpInFlightInc() {

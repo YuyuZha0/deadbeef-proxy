@@ -28,11 +28,12 @@ import org.openjdk.jmh.annotations.Warmup;
 import org.openjdk.jmh.infra.Blackhole;
 
 /**
- * Hyperscan vs {@code java.util.Pattern} over the REAL bundled routing lists
- * ({@code local_only.txt} + {@code remote_only.txt}, ~hundreds of glob patterns combined), matching
- * a realistic mix of domestic, blocked, and unlisted hostnames. Same shape as the synthetic
+ * Hyperscan vs {@code java.util.Pattern} over the REAL bundled routing lists ({@code
+ * local_only.txt} + {@code remote_only.txt}, ~hundreds of glob patterns combined), matching a
+ * realistic mix of domestic, blocked, and unlisted hostnames. Same shape as the synthetic
  * benchmarks; reuses {@link HostNameMatcherImpl#fnMatchToRegex} so all engines match identical
- * semantics. Not run by Surefire; run with {@code org.openjdk.jmh.Main HostNameMatcherRealDataBenchmark}.
+ * semantics. Not run by Surefire; run with {@code org.openjdk.jmh.Main
+ * HostNameMatcherRealDataBenchmark}.
  *
  * <p>Measured (arm64, JDK 21, Vectorscan; 436 combined local_only+remote_only patterns, 12
  * lookups/op, average time):

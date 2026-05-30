@@ -1,15 +1,14 @@
 package org.deadbeef.util;
 
+import static org.junit.Assert.assertEquals;
+
 import io.vertx.core.Handler;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.streams.ReadStream;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.Assert.assertEquals;
 
 public class UtilsTest {
 

@@ -87,6 +87,7 @@ java \
 ```
 
 > The `--add-opens` and `-Dio.netty.tryReflectionSetAccessible` flags let Netty use its fast direct-memory paths on JDK
+
 21. They are not strictly required, but skipping them prints warnings and may slightly degrade throughput.
 
 Example `client-config.yaml`:
@@ -101,8 +102,8 @@ secretKey: a-key
 
 # Optional
 proxyAll: false           # false (default): try the target directly first, fall back to the remote
-                          #   server only when the direct connection fails. true: always tunnel
-                          #   everything through the remote server (disables the direct-first path).
+  #   server only when the direct connection fails. true: always tunnel
+#   everything through the remote server (disables the direct-first path).
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver
 adminPort: 18080          # opens the live metrics dashboard on http://127.0.0.1:18080 (omit to disable)

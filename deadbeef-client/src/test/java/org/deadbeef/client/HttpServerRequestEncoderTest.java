@@ -81,12 +81,7 @@ public class HttpServerRequestEncoderTest {
   @Test
   public void handlesProxyProtocolPathThatRepeatsHost() {
     HttpServerRequest request =
-        mockRequest(
-            HttpMethod.GET,
-            HttpVersion.HTTP_1_1,
-            "example.com",
-            "example.com/path",
-            null);
+        mockRequest(HttpMethod.GET, HttpVersion.HTTP_1_1, "example.com", "example.com/path", null);
 
     HttpProto.Request encoded = new HttpServerRequestEncoder().apply(request);
 

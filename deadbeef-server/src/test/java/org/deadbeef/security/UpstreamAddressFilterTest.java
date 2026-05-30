@@ -120,11 +120,7 @@ public class UpstreamAddressFilterTest {
   @Test
   public void predicateAndReasonAgree() {
     String[] samples = {
-        "127.0.0.1",
-        "10.0.0.1",
-        "169.254.169.254",
-        "8.8.8.8",
-        "224.0.0.1",
+      "127.0.0.1", "10.0.0.1", "169.254.169.254", "8.8.8.8", "224.0.0.1",
     };
     for (String s : samples) {
       InetAddress a = addr(s);
@@ -157,9 +153,9 @@ public class UpstreamAddressFilterTest {
   }
 
   /**
-   * Documented gap: IPv6 unique-local addresses (fc00::/7) have no JDK predicate, and the
-   * default filter does not roll its own. Operators concerned about ULA should ensure their
-   * internal networks are unreachable from the proxy server by other means (firewall / routing).
+   * Documented gap: IPv6 unique-local addresses (fc00::/7) have no JDK predicate, and the default
+   * filter does not roll its own. Operators concerned about ULA should ensure their internal
+   * networks are unreachable from the proxy server by other means (firewall / routing).
    */
   @Test
   public void documentedGap_uniqueLocalIpv6IsNotCaught() {

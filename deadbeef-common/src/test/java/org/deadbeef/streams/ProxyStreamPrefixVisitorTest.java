@@ -96,8 +96,7 @@ public class ProxyStreamPrefixVisitorTest {
 
   @Test(expected = NullPointerException.class)
   public void visitRejectsNullSrcInHandlerForm() {
-    new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx())
-        .visit(null, ar -> {});
+    new ProxyStreamPrefixVisitor<WriteStream<Buffer>>(rule.vertx()).visit(null, ar -> {});
   }
 
   @Test(expected = NullPointerException.class)
@@ -176,8 +175,7 @@ public class ProxyStreamPrefixVisitorTest {
                           .onSuccess(
                               ignored -> {
                                 ctx.assertEquals(1, dst.received.size());
-                                ctx.assertTrue(
-                                    Arrays.equals(tail, dst.received.get(0).getBytes()));
+                                ctx.assertTrue(Arrays.equals(tail, dst.received.get(0).getBytes()));
                                 done.complete();
                               }));
 
@@ -600,5 +598,4 @@ public class ProxyStreamPrefixVisitorTest {
       return this;
     }
   }
-
 }

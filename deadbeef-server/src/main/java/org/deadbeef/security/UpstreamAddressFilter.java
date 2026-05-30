@@ -10,8 +10,8 @@ import lombok.NonNull;
  * is safe to dial. Intended to defeat SSRF: an authenticated client should not be able to use the
  * proxy as a relay into the server's private network, loopback, or cloud-metadata endpoints.
  *
- * <p>The input type matches what Vert.x's {@link io.vertx.core.impl.AddressResolver} returns —
- * JDK {@link InetAddress}. Classification is delegated entirely to the JDK predicates plus Guava's
+ * <p>The input type matches what Vert.x's {@link io.vertx.core.impl.AddressResolver} returns — JDK
+ * {@link InetAddress}. Classification is delegated entirely to the JDK predicates plus Guava's
  * {@link InetAddresses#isMaximum} for the IPv4 broadcast case.
  *
  * <p>Guava's {@code InetAddresses.forString} canonicalises IPv4-mapped IPv6 literals like {@code
@@ -19,12 +19,12 @@ import lombok.NonNull;
  * predicates fire correctly.
  *
  * <p>Default policy (via {@link #defaultDenyList()}) rejects every JDK-recognized non-public
- * category. Use {@link #builder()} to relax individual categories for deployments that
- * legitimately need private-network reachability through the proxy.
+ * category. Use {@link #builder()} to relax individual categories for deployments that legitimately
+ * need private-network reachability through the proxy.
  *
  * <p><b>Known gap:</b> IPv6 unique-local addresses (fc00::/7) have no JDK predicate and are not
- * denied here. Operators concerned about ULA should ensure their internal networks are
- * unreachable from the proxy server by other means (firewall / route table).
+ * denied here. Operators concerned about ULA should ensure their internal networks are unreachable
+ * from the proxy server by other means (firewall / route table).
  */
 public final class UpstreamAddressFilter implements Predicate<InetAddress> {
 

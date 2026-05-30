@@ -24,8 +24,8 @@ import org.openjdk.jmh.infra.Blackhole;
  * the same ~120 glob patterns:
  *
  * <ul>
- *   <li><b>hyperscanMatcher</b> — the real {@link HostNameMatcherImpl#match}, now synchronous with a
- *       per-thread ({@code FastThreadLocal}) Hyperscan scanner — no context hop, no Future;
+ *   <li><b>hyperscanMatcher</b> — the real {@link HostNameMatcherImpl#match}, now synchronous with
+ *       a per-thread ({@code FastThreadLocal}) Hyperscan scanner — no context hop, no Future;
  *   <li><b>regexSynchronous</b> — a combined-alternation {@link Pattern} matched inline.
  * </ul>
  *
@@ -40,9 +40,10 @@ import org.openjdk.jmh.infra.Blackhole;
  *   regexSynchronous    37.2 us/op   (~4.6 us/lookup)
  * </pre>
  *
- * The synchronous thread-local design runs at the raw Hyperscan scan speed end-to-end (~1 us/lookup)
- * and is ~4.3x faster than the combined regex — a full reversal of the earlier async single-context
- * path (53 us/op), which lost to the regex once the per-call context hop was counted.
+ * The synchronous thread-local design runs at the raw Hyperscan scan speed end-to-end (~1
+ * us/lookup) and is ~4.3x faster than the combined regex — a full reversal of the earlier async
+ * single-context path (53 us/op), which lost to the regex once the per-call context hop was
+ * counted.
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.MICROSECONDS)

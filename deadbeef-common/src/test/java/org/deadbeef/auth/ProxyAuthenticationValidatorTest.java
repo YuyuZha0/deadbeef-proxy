@@ -33,22 +33,19 @@ public class ProxyAuthenticationValidatorTest {
 
   @Test
   public void rejectsWrongSecretKey() {
-    HttpProto.ProxyAuthentication auth =
-        new ProxyAuthenticationGenerator("id", "real-key").get();
+    HttpProto.ProxyAuthentication auth = new ProxyAuthenticationGenerator("id", "real-key").get();
     assertFalse(ProxyAuthenticationValidator.simple("id", "fake-key").test(auth));
   }
 
   @Test
   public void rejectsUnknownSecretId() {
-    HttpProto.ProxyAuthentication auth =
-        new ProxyAuthenticationGenerator("id", "key").get();
+    HttpProto.ProxyAuthentication auth = new ProxyAuthenticationGenerator("id", "key").get();
     assertFalse(ProxyAuthenticationValidator.simple("other-id", "key").test(auth));
   }
 
   @Test
   public void rejectsTamperedSignature() {
-    HttpProto.ProxyAuthentication original =
-        new ProxyAuthenticationGenerator("id", "key").get();
+    HttpProto.ProxyAuthentication original = new ProxyAuthenticationGenerator("id", "key").get();
     HttpProto.ProxyAuthentication tampered =
         original.toBuilder().setSignature(ByteString.copyFromUtf8("not-a-real-signature")).build();
 
@@ -57,8 +54,7 @@ public class ProxyAuthenticationValidatorTest {
 
   @Test
   public void rejectsTamperedNonce() {
-    HttpProto.ProxyAuthentication original =
-        new ProxyAuthenticationGenerator("id", "key").get();
+    HttpProto.ProxyAuthentication original = new ProxyAuthenticationGenerator("id", "key").get();
     HttpProto.ProxyAuthentication tampered =
         original.toBuilder().setNonce(ByteString.copyFromUtf8("0000000000000000")).build();
 
@@ -107,8 +103,7 @@ public class ProxyAuthenticationValidatorTest {
 
   @Test
   public void testStringReturnsFalseForMalformedProto() {
-    String junk =
-        com.google.common.io.BaseEncoding.base64Url().encode("not-a-protobuf".getBytes());
+    String junk = com.google.common.io.BaseEncoding.base64Url().encode("not-a-protobuf".getBytes());
     assertFalse(ProxyAuthenticationValidator.simple("id", "key").testString(junk));
   }
 
@@ -123,8 +118,7 @@ public class ProxyAuthenticationValidatorTest {
   @Test
   public void fromMapAcceptsMultipleSecrets() {
     ProxyAuthenticationValidator validator =
-        ProxyAuthenticationValidator.fromMap(
-            ImmutableMap.of("id-1", "key-1", "id-2", "key-2"));
+        ProxyAuthenticationValidator.fromMap(ImmutableMap.of("id-1", "key-1", "id-2", "key-2"));
 
     assertTrue(validator.test(new ProxyAuthenticationGenerator("id-1", "key-1").get()));
     assertTrue(validator.test(new ProxyAuthenticationGenerator("id-2", "key-2").get()));
@@ -227,8 +221,7 @@ public class ProxyAuthenticationValidatorTest {
             .setTimestamp(ts)
             .setNonce(ByteString.copyFrom(nonce))
             .setSignature(
-                ByteString.copyFrom(
-                    ProxyAuthenticationGenerator.signature("id-1", ts, nonce, hf1)))
+                ByteString.copyFrom(ProxyAuthenticationGenerator.signature("id-1", ts, nonce, hf1)))
             .build();
     HttpProto.ProxyAuthentication auth2 =
         HttpProto.ProxyAuthentication.newBuilder()
@@ -236,8 +229,7 @@ public class ProxyAuthenticationValidatorTest {
             .setTimestamp(ts)
             .setNonce(ByteString.copyFrom(nonce))
             .setSignature(
-                ByteString.copyFrom(
-                    ProxyAuthenticationGenerator.signature("id-2", ts, nonce, hf2)))
+                ByteString.copyFrom(ProxyAuthenticationGenerator.signature("id-2", ts, nonce, hf2)))
             .build();
 
     ProxyAuthenticationValidator validator =
@@ -253,8 +245,7 @@ public class ProxyAuthenticationValidatorTest {
   @Test
   public void nonceCacheIsPerValidatorInstance() {
     // Two independent validators must have independent caches.
-    HttpProto.ProxyAuthentication auth =
-        new ProxyAuthenticationGenerator("id", "key").get();
+    HttpProto.ProxyAuthentication auth = new ProxyAuthenticationGenerator("id", "key").get();
 
     assertTrue(ProxyAuthenticationValidator.simple("id", "key").test(auth));
     // Same auth, fresh validator → should still be accepted.

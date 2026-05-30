@@ -44,10 +44,7 @@ public final class UpstreamResolver {
    * </ul>
    */
   public static Future<SocketAddress> resolveAndFilter(
-      @NonNull Vertx vertx,
-      @NonNull String host,
-      int port,
-      @NonNull UpstreamAddressFilter filter) {
+      @NonNull Vertx vertx, @NonNull String host, int port, @NonNull UpstreamAddressFilter filter) {
     return resolve(vertx, host)
         .compose(
             addr -> {

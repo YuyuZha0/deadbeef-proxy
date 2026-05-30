@@ -15,8 +15,7 @@ public class ServerConfigTest {
   public void verifyPassesOnValidConfig() throws Exception {
     ServerConfig cfg =
         YAML.readValue(
-            "port: 14483\nauth:\n  - { secretId: a, secretKey: b }\n",
-            ServerConfig.class);
+            "port: 14483\nauth:\n  - { secretId: a, secretKey: b }\n", ServerConfig.class);
     cfg.verify();
   }
 
@@ -34,8 +33,7 @@ public class ServerConfigTest {
   @Test
   public void verifyRejectsBadPort() throws Exception {
     ServerConfig cfg =
-        YAML.readValue(
-            "port: 0\nauth:\n  - { secretId: a, secretKey: b }\n", ServerConfig.class);
+        YAML.readValue("port: 0\nauth:\n  - { secretId: a, secretKey: b }\n", ServerConfig.class);
     try {
       cfg.verify();
       fail("expected IllegalArgumentException");
