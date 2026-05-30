@@ -24,6 +24,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.metrics.ProxyMetrics;
 import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
@@ -56,6 +57,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
   private final OriginProvider remoteProvider;
   private final OriginProvider targetProvider;
   private final ReachabilityGate<HttpClientRequest> reachabilityGate;
+  private final HostNameMatcher localOnly;
+  private final HostNameMatcher remoteOnly;
   private final boolean proxyAll;
 
   private final ProxyAuthenticationGenerator proxyAuthenticationGenerator;
@@ -67,6 +70,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       @NonNull OriginProvider remoteProvider,
       @NonNull OriginProvider targetProvider,
       @NonNull ReachabilityGate<HttpClientRequest> reachabilityGate,
+      @NonNull HostNameMatcher localOnly,
+      @NonNull HostNameMatcher remoteOnly,
       boolean proxyAll,
       @NonNull ProxyAuthenticationGenerator generator,
       @NonNull ProxyMetrics metrics) {
@@ -76,6 +81,8 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
     this.remoteProvider = remoteProvider;
     this.targetProvider = targetProvider;
     this.reachabilityGate = reachabilityGate;
+    this.localOnly = localOnly;
+    this.remoteOnly = remoteOnly;
     this.proxyAll = proxyAll;
     this.proxyAuthenticationGenerator = generator;
     this.metrics = metrics;
@@ -150,8 +157,27 @@ public final class HttpProxyHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    // Try a direct request to the target first; fall back to the remote proxy on connect failure.
+    String host = target.host();
+    if (remoteOnly.match(host)) {
+      // Known-blocked: skip the doomed direct attempt.
+      proxyToRemote(serverRequest, serverResponse, contentLength, errorHandler);
+      return;
+    }
+
     RequestOptions directOptions = buildDirectOptions(serverRequest, target);
+    if (localOnly.match(host)) {
+      // Hard-pinned direct: never use the remote proxy; a connect failure surfaces as an error.
+      httpClient
+          .request(directOptions)
+          .onSuccess(
+              clientRequest ->
+                  proxyDirect(
+                      serverRequest, serverResponse, clientRequest, contentLength, errorHandler))
+          .onFailure(errorHandler);
+      return;
+    }
+
+    // Unlisted: try direct first; fall back to the remote proxy on connect failure.
     reachabilityGate
         .apply(target, () -> httpClient.request(directOptions))
         .onSuccess(

@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
 import org.deadbeef.metrics.ProxyMetrics;
+import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
 import org.deadbeef.streams.MetricPipeFactory;
 import org.deadbeef.streams.PipeFactory;
@@ -38,6 +39,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
   private final OriginProvider remoteProvider;
   private final OriginProvider targetProvider;
   private final ReachabilityGate<NetSocket> reachabilityGate;
+  private final HostNameMatcher localOnly;
+  private final HostNameMatcher remoteOnly;
   private final boolean proxyAll;
   private final ProxyAuthenticationGenerator generator;
   private final ProxyMetrics metrics;
@@ -50,6 +53,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
       @NonNull OriginProvider remoteProvider,
       @NonNull OriginProvider targetProvider,
       @NonNull ReachabilityGate<NetSocket> reachabilityGate,
+      @NonNull HostNameMatcher localOnly,
+      @NonNull HostNameMatcher remoteOnly,
       boolean proxyAll,
       @NonNull ProxyAuthenticationGenerator generator,
       @NonNull ProxyMetrics metrics) {
@@ -58,6 +63,8 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
     this.remoteProvider = remoteProvider;
     this.targetProvider = targetProvider;
     this.reachabilityGate = reachabilityGate;
+    this.localOnly = localOnly;
+    this.remoteOnly = remoteOnly;
     this.proxyAll = proxyAll;
     this.generator = generator;
     this.metrics = metrics;
@@ -92,9 +99,27 @@ public final class ConnectTunnelHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    // Try a direct TCP tunnel to the target first; fall back to the remote proxy on connect
-    // failure.
     SocketAddress target = targetProvider.apply(serverRequest);
+    String host = target.host();
+    if (remoteOnly.match(host)) {
+      // Known-blocked: skip the doomed direct attempt.
+      tunnelViaRemote(serverRequest, stopConnectTimerOnce, errorHandler);
+      return;
+    }
+    if (localOnly.match(host)) {
+      // Hard-pinned direct: never use the remote proxy; a connect failure surfaces as an error.
+      netClient
+          .connect(target)
+          .onSuccess(
+              upstream -> {
+                metrics.httpsDirectTunnels.inc();
+                openTunnel(serverRequest, upstream, stopConnectTimerOnce, errorHandler);
+              })
+          .onFailure(errorHandler);
+      return;
+    }
+
+    // Unlisted: try a direct TCP tunnel first; fall back to the remote proxy on connect failure.
     reachabilityGate
         .apply(target, () -> netClient.connect(target))
         .onSuccess(

@@ -40,7 +40,12 @@ public sealed interface HostNameMatcher extends Predicate<String>
         throw new IllegalArgumentException("Classpath resource not found: " + classpathFile);
       }
       try (InputStreamReader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8)) {
-        List<String> hostNames = CharStreams.readLines(reader);
+        List<String> hostNames =
+            CharStreams.readLines(reader).stream()
+                .map(StringUtils::trimToEmpty)
+                // skip blank lines and '#' comments so the bundled lists can be grouped/documented
+                .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                .toList();
         return create(vertx, hostNames);
       }
     } catch (IOException e) {

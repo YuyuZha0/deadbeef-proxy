@@ -16,7 +16,9 @@ import io.vertx.ext.unit.TestContext;
 import io.vertx.ext.unit.junit.RunTestOnContext;
 import io.vertx.ext.unit.junit.VertxUnitRunner;
 import java.time.Duration;
+import java.util.List;
 import org.deadbeef.auth.ProxyAuthenticationGenerator;
+import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
 import org.deadbeef.util.Constants;
 import org.junit.Rule;
@@ -50,9 +52,25 @@ public class ConnectTunnelHandlerTest {
     return server.listen(0).map(server);
   }
 
+  private HostNameMatcher empty(Vertx vertx) {
+    return HostNameMatcher.create(vertx, List.of());
+  }
+
   /** Spin up a local HttpServer hosting the ConnectTunnelHandler under test. */
   private Future<HttpServer> startClientFacingServer(
       Vertx vertx, HttpClient httpClient, NetClient netClient, int remotePort, boolean proxyAll) {
+    return startClientFacingServer(
+        vertx, httpClient, netClient, remotePort, proxyAll, empty(vertx), empty(vertx));
+  }
+
+  private Future<HttpServer> startClientFacingServer(
+      Vertx vertx,
+      HttpClient httpClient,
+      NetClient netClient,
+      int remotePort,
+      boolean proxyAll,
+      HostNameMatcher localOnly,
+      HostNameMatcher remoteOnly) {
     ConnectTunnelHandler handler =
         new ConnectTunnelHandler(
             httpClient,
@@ -60,6 +78,8 @@ public class ConnectTunnelHandlerTest {
             OriginProvider.ofStatic(remotePort, "127.0.0.1"),
             OriginProvider.ofAuthority(443),
             new ReachabilityGate<>(Duration.ofMinutes(5), 1_000),
+            localOnly,
+            remoteOnly,
             proxyAll,
             new ProxyAuthenticationGenerator("id", "key"),
             new org.deadbeef.metrics.ProxyMetrics(new MetricRegistry()));
@@ -272,6 +292,154 @@ public class ConnectTunnelHandlerTest {
                                         }
                                       });
                                   sock.write("ping");
+                                })
+                            .onFailure(ctx::fail);
+                      });
+            });
+  }
+
+  @Test
+  public void remoteOnlyHostForcedToRemoteEvenWhenDirectReachable(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+
+    startEchoServer(vertx) // reachable direct target
+        .onFailure(ctx::fail)
+        .onSuccess(
+            echo ->
+                // Remote stub returns 502 so we can tell the tunnel went remote, not direct.
+                startStubServer(vertx, req -> req.response().setStatusCode(502).end())
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        stub -> {
+                          HttpClient httpClient = vertx.createHttpClient();
+                          HostNameMatcher remoteOnly =
+                              HostNameMatcher.create(vertx, List.of("127.0.0.1"));
+                          startClientFacingServer(
+                                  vertx,
+                                  httpClient,
+                                  vertx.createNetClient(),
+                                  stub.actualPort(),
+                                  false,
+                                  empty(vertx),
+                                  remoteOnly)
+                              .onFailure(ctx::fail)
+                              .onSuccess(
+                                  facing -> {
+                                    HttpClient browser = vertx.createHttpClient();
+                                    browser
+                                        .request(
+                                            new io.vertx.core.http.RequestOptions()
+                                                .setMethod(HttpMethod.CONNECT)
+                                                .setHost("127.0.0.1")
+                                                .setPort(facing.actualPort())
+                                                .setURI("127.0.0.1:" + echo.actualPort()))
+                                        .compose(req -> req.connect())
+                                        .onSuccess(
+                                            resp -> {
+                                              // 502 from the remote stub, not 200 from the echo.
+                                              ctx.assertEquals(502, resp.statusCode());
+                                              done.complete();
+                                            })
+                                        .onFailure(ctx::fail);
+                                  });
+                        }));
+  }
+
+  @Test
+  public void localOnlyHostTunnelsDirectAndNeverUsesRemote(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+
+    // Remote stub must NOT be contacted for a local_only host.
+    startStubServer(vertx, req -> ctx.fail("remote proxy must not be used for a local_only host"))
+        .onFailure(ctx::fail)
+        .onSuccess(
+            stub ->
+                startEchoServer(vertx)
+                    .onFailure(ctx::fail)
+                    .onSuccess(
+                        echo -> {
+                          HttpClient httpClient = vertx.createHttpClient();
+                          HostNameMatcher localOnly =
+                              HostNameMatcher.create(vertx, List.of("127.0.0.1"));
+                          startClientFacingServer(
+                                  vertx,
+                                  httpClient,
+                                  vertx.createNetClient(),
+                                  stub.actualPort(),
+                                  false,
+                                  localOnly,
+                                  empty(vertx))
+                              .onFailure(ctx::fail)
+                              .onSuccess(
+                                  facing -> {
+                                    HttpClient browser = vertx.createHttpClient();
+                                    browser
+                                        .request(
+                                            new io.vertx.core.http.RequestOptions()
+                                                .setMethod(HttpMethod.CONNECT)
+                                                .setHost("127.0.0.1")
+                                                .setPort(facing.actualPort())
+                                                .setURI("127.0.0.1:" + echo.actualPort()))
+                                        .compose(req -> req.connect())
+                                        .onSuccess(
+                                            resp -> {
+                                              ctx.assertEquals(
+                                                  HttpResponseStatus.OK.code(), resp.statusCode());
+                                              NetSocket sock = resp.netSocket();
+                                              Buffer received = Buffer.buffer();
+                                              sock.handler(
+                                                  b -> {
+                                                    received.appendBuffer(b);
+                                                    if (received.toString().equals("ping")) {
+                                                      done.complete();
+                                                    }
+                                                  });
+                                              sock.write("ping");
+                                            })
+                                        .onFailure(ctx::fail);
+                                  });
+                        }));
+  }
+
+  @Test
+  public void localOnlyHostPinnedDirectNoRemoteFallback(TestContext ctx) {
+    Vertx vertx = rule.vertx();
+    Async done = ctx.async();
+
+    // Remote stub must NOT be contacted; the dead direct target must surface as an error.
+    startStubServer(vertx, req -> ctx.fail("remote proxy must not be used for a local_only host"))
+        .onFailure(ctx::fail)
+        .onSuccess(
+            stub -> {
+              HttpClient httpClient = vertx.createHttpClient();
+              HostNameMatcher localOnly = HostNameMatcher.create(vertx, List.of("127.0.0.1"));
+              startClientFacingServer(
+                      vertx,
+                      httpClient,
+                      vertx.createNetClient(),
+                      stub.actualPort(),
+                      false,
+                      localOnly,
+                      empty(vertx))
+                  .onFailure(ctx::fail)
+                  .onSuccess(
+                      facing -> {
+                        HttpClient browser = vertx.createHttpClient();
+                        browser
+                            .request(
+                                new io.vertx.core.http.RequestOptions()
+                                    .setMethod(HttpMethod.CONNECT)
+                                    .setHost("127.0.0.1")
+                                    .setPort(facing.actualPort())
+                                    .setURI("127.0.0.1:1")) // dead direct target
+                            .compose(req -> req.connect())
+                            .onSuccess(
+                                resp -> {
+                                  ctx.assertEquals(
+                                      HttpResponseStatus.BAD_GATEWAY.code(), resp.statusCode());
+                                  done.complete();
                                 })
                             .onFailure(ctx::fail);
                       });

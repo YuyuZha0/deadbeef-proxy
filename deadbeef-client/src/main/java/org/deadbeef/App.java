@@ -26,6 +26,7 @@ import org.deadbeef.client.MetricsDashboardServer;
 import org.deadbeef.client.ProxyClientRequestHandler;
 import org.deadbeef.client.ReachabilityGate;
 import org.deadbeef.metrics.ProxyMetrics;
+import org.deadbeef.route.HostNameMatcher;
 import org.deadbeef.route.OriginProvider;
 
 @Slf4j
@@ -88,6 +89,11 @@ public final class App extends ProxyVerticle<ClientConfig> {
     ReachabilityGate<NetSocket> tunnelReachabilityGate =
         new ReachabilityGate<>(Duration.ofMinutes(5), 10_000);
 
+    // Rule lists: local_only -> always direct, remote_only -> always remote. Unlisted hosts fall
+    // through to the ReachabilityGate. Bundled as client classpath resources.
+    HostNameMatcher localOnly = HostNameMatcher.fromClasspathFile(getVertx(), "local_only.txt");
+    HostNameMatcher remoteOnly = HostNameMatcher.fromClasspathFile(getVertx(), "remote_only.txt");
+
     Handler<HttpServerRequest> requestHandler =
         new ProxyClientRequestHandler(
             new HttpProxyHandler(
@@ -96,6 +102,8 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 remoteProvider,
                 OriginProvider.ofAuthority(80),
                 httpReachabilityGate,
+                localOnly,
+                remoteOnly,
                 proxyAll,
                 proxyAuthenticationGenerator,
                 proxyMetrics),
@@ -105,6 +113,8 @@ public final class App extends ProxyVerticle<ClientConfig> {
                 remoteProvider,
                 OriginProvider.ofAuthority(443),
                 tunnelReachabilityGate,
+                localOnly,
+                remoteOnly,
                 proxyAll,
                 proxyAuthenticationGenerator,
                 proxyMetrics));
