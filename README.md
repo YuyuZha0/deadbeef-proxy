@@ -102,7 +102,7 @@ secretKey: a-key
 
 # Optional
 proxyAll: false           # false (default): try the target directly first, fall back to the remote
-  #   server only when the direct connection fails. true: always tunnel
+#   server only when the direct connection fails. true: always tunnel
 #   everything through the remote server (disables the direct-first path).
 preferNativeTransport: true
 addressResolver: [ 8.8.8.8, 114.114.114.114 ]   # custom DNS resolvers; omit to use the system resolver

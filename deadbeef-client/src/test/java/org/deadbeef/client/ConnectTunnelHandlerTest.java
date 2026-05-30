@@ -27,7 +27,8 @@ import org.mockito.Mockito;
 
 /**
  * Tests the handler's dispatch for each {@link RoutePolicy.Decision}. RoutePolicy is mocked, so
- * these tests do not depend on the real routing logic (that lives in {@code DefaultRoutePolicyTest}).
+ * these tests do not depend on the real routing logic (that lives in {@code
+ * DefaultRoutePolicyTest}).
  */
 @RunWith(VertxUnitRunner.class)
 public class ConnectTunnelHandlerTest {
@@ -101,7 +102,8 @@ public class ConnectTunnelHandlerTest {
   }
 
   /** Drive a CONNECT, then echo "ping" through the tunnel and complete when it comes back. */
-  private void expectEchoTunnel(TestContext ctx, Async done, HttpClient browser, HttpServer facing, String authority) {
+  private void expectEchoTunnel(
+      TestContext ctx, Async done, HttpClient browser, HttpServer facing, String authority) {
     browser
         .request(connectRequest(facing, authority))
         .compose(req -> req.connect())
@@ -329,7 +331,8 @@ public class ConnectTunnelHandlerTest {
   public void malformedAuthorityIsHandledNotHung(TestContext ctx) {
     Vertx vertx = rule.vertx();
     Async done = ctx.async();
-    // A malformed authority makes targetProvider.apply throw before decide() is reached; the handler
+    // A malformed authority makes targetProvider.apply throw before decide() is reached; the
+    // handler
     // must catch it and hand off to the remote proxy rather than leak the exception and hang.
     startStubServer(vertx, req -> req.response().setStatusCode(502).end())
         .onFailure(ctx::fail)

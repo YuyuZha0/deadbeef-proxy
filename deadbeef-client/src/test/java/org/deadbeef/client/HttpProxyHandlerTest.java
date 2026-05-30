@@ -23,7 +23,8 @@ import org.mockito.Mockito;
 
 /**
  * Tests the handler's dispatch for each {@link RoutePolicy.Decision}. RoutePolicy is mocked, so
- * these tests do not depend on the real routing logic (that lives in {@code DefaultRoutePolicyTest}).
+ * these tests do not depend on the real routing logic (that lives in {@code
+ * DefaultRoutePolicyTest}).
  */
 @RunWith(VertxUnitRunner.class)
 public class HttpProxyHandlerTest {

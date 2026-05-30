@@ -53,8 +53,8 @@ public final class Authorities {
 
   /**
    * Whether {@code host} denotes the loopback interface — a {@code 127.0.0.0/8} or {@code ::1} IP
-   * literal, or the literal name {@code "localhost"}. Non-blocking (no DNS); other names that happen
-   * to resolve to loopback are not detected.
+   * literal, or the literal name {@code "localhost"}. Non-blocking (no DNS); other names that
+   * happen to resolve to loopback are not detected.
    */
   public static boolean isLoopback(String host) {
     if (StringUtils.isEmpty(host)) {
@@ -75,4 +75,3 @@ public final class Authorities {
     return target.port() == localPort && isLoopback(target.host());
   }
 }
-

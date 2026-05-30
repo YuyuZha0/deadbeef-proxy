@@ -29,12 +29,14 @@ public class DefaultRoutePolicyTest {
 
   @Test
   public void unlistedNameUsesGate() {
-    assertEquals(GATE, policy(List.of("*.cn.example"), List.of("*.blocked.com")).decide("other.org"));
+    assertEquals(
+        GATE, policy(List.of("*.cn.example"), List.of("*.blocked.com")).decide("other.org"));
   }
 
   @Test
   public void localWinsWhenNameIsInBothLists() {
-    assertEquals(DIRECT, policy(List.of("conflict.com"), List.of("conflict.com")).decide("conflict.com"));
+    assertEquals(
+        DIRECT, policy(List.of("conflict.com"), List.of("conflict.com")).decide("conflict.com"));
   }
 
   // ---- IP literals ----
@@ -75,7 +77,8 @@ public class DefaultRoutePolicyTest {
 
   @Test
   public void proxyAllStillRoutesLocalScopeIpsDirect() {
-    // Local-scope addresses cannot traverse the remote proxy, so proxyAll must not force them remote.
+    // Local-scope addresses cannot traverse the remote proxy, so proxyAll must not force them
+    // remote.
     RoutePolicy p =
         new DefaultRoutePolicy(
             HostNameMatcher.create(List.of()), HostNameMatcher.create(List.of()), true, null);
@@ -90,7 +93,9 @@ public class DefaultRoutePolicyTest {
     // The proxy's own IP must be reached directly even if it is also in remote_only (no self-loop).
     RoutePolicy p =
         new DefaultRoutePolicy(
-            HostNameMatcher.create(List.of()), HostNameMatcher.create(List.of("9.9.9.9")), false,
+            HostNameMatcher.create(List.of()),
+            HostNameMatcher.create(List.of("9.9.9.9")),
+            false,
             "9.9.9.9");
     assertEquals(DIRECT, p.decide("9.9.9.9"));
   }
