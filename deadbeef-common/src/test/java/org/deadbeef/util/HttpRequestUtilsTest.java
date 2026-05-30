@@ -1,5 +1,8 @@
 package org.deadbeef.util;
 
+import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.AsyncResult;
@@ -8,15 +11,11 @@ import io.vertx.core.MultiMap;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.impl.NoStackTraceThrowable;
+import java.io.IOException;
+import java.util.concurrent.TimeoutException;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-
-import java.io.IOException;
-import java.util.concurrent.TimeoutException;
-
-import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 
 public class HttpRequestUtilsTest {
 
@@ -60,8 +59,7 @@ public class HttpRequestUtilsTest {
   @Test
   public void errorMappingOtherReturnsBadGateway() {
     assertEquals(
-        HttpResponseStatus.BAD_GATEWAY,
-        HttpRequestUtils.errorMapping(new IOException("boom")));
+        HttpResponseStatus.BAD_GATEWAY, HttpRequestUtils.errorMapping(new IOException("boom")));
     assertEquals(
         HttpResponseStatus.BAD_GATEWAY, HttpRequestUtils.errorMapping(new RuntimeException()));
   }

@@ -4,10 +4,10 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.SocketAddress;
 import lombok.NonNull;
 
-public final class StaticAddressPicker implements AddressPicker {
+public final class StaticOriginProvider implements OriginProvider {
   private final SocketAddress socketAddress;
 
-  public StaticAddressPicker(@NonNull SocketAddress socketAddress) {
+  public StaticOriginProvider(@NonNull SocketAddress socketAddress) {
     this.socketAddress = socketAddress;
   }
 

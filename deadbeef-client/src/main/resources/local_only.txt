@@ -1,0 +1,234 @@
+# local_only.txt — hosts that are ALWAYS served directly (never via the remote proxy).
+#
+# This is a TRUST list: a host listed here is hard-pinned to the direct path, so a
+# direct-connect failure surfaces as an error rather than falling back to the remote
+# proxy. Keep it conservative — only unambiguous China-mainland destinations whose
+# domestic reachability we are confident about. Anything uncertain should be left out
+# so it falls through to the adaptive ReachabilityGate.
+#
+# Glob syntax: '*' = any run, '?' = one char. Apex and wildcard are listed separately
+# because '*.baidu.com' does not match 'baidu.com'. Matching is case-insensitive.
+
+# --- Baidu ---
+baidu.com
+*.baidu.com
+bdstatic.com
+*.bdstatic.com
+bdimg.com
+*.bdimg.com
+baidubce.com
+*.baidubce.com
+
+# --- Tencent / QQ / WeChat ---
+qq.com
+*.qq.com
+weixin.qq.com
+*.weixin.qq.com
+wechat.com
+*.wechat.com
+gtimg.cn
+*.gtimg.cn
+qpic.cn
+*.qpic.cn
+qlogo.cn
+*.qlogo.cn
+tencent.com
+*.tencent.com
+myqcloud.com
+*.myqcloud.com
+tencent-cloud.com
+*.tencent-cloud.com
+
+# --- Alibaba ---
+taobao.com
+*.taobao.com
+tmall.com
+*.tmall.com
+alibaba.com
+*.alibaba.com
+1688.com
+*.1688.com
+alipay.com
+*.alipay.com
+alicdn.com
+*.alicdn.com
+aliyun.com
+*.aliyun.com
+aliyuncs.com
+*.aliyuncs.com
+alibabausercontent.com
+*.alibabausercontent.com
+taobaocdn.com
+*.taobaocdn.com
+dingtalk.com
+*.dingtalk.com
+
+# --- JD ---
+jd.com
+*.jd.com
+360buyimg.com
+*.360buyimg.com
+jdcloud.com
+*.jdcloud.com
+
+# --- Pinduoduo ---
+pinduoduo.com
+*.pinduoduo.com
+yangkeduo.com
+*.yangkeduo.com
+pddpic.com
+*.pddpic.com
+
+# --- Meituan / Dianping / Ele.me ---
+meituan.com
+*.meituan.com
+meituan.net
+*.meituan.net
+dianping.com
+*.dianping.com
+ele.me
+*.ele.me
+
+# --- ByteDance ---
+bytedance.com
+*.bytedance.com
+douyin.com
+*.douyin.com
+douyinpic.com
+*.douyinpic.com
+toutiao.com
+*.toutiao.com
+toutiaoimg.com
+*.toutiaoimg.com
+ixigua.com
+*.ixigua.com
+feishu.cn
+*.feishu.cn
+
+# --- Sina / Weibo ---
+sina.com.cn
+*.sina.com.cn
+sina.cn
+*.sina.cn
+weibo.com
+*.weibo.com
+weibo.cn
+*.weibo.cn
+sinaimg.cn
+*.sinaimg.cn
+
+# --- NetEase ---
+163.com
+*.163.com
+126.com
+*.126.com
+netease.com
+*.netease.com
+126.net
+*.126.net
+ydstatic.com
+*.ydstatic.com
+music.163.com
+*.music.163.com
+
+# --- Sohu ---
+sohu.com
+*.sohu.com
+sohucs.com
+*.sohucs.com
+itc.cn
+*.itc.cn
+
+# --- Video ---
+bilibili.com
+*.bilibili.com
+hdslb.com
+*.hdslb.com
+biliapi.net
+*.biliapi.net
+iqiyi.com
+*.iqiyi.com
+qiyipic.com
+*.qiyipic.com
+youku.com
+*.youku.com
+mgtv.com
+*.mgtv.com
+kuaishou.com
+*.kuaishou.com
+yximgs.com
+*.yximgs.com
+douyu.com
+*.douyu.com
+huya.com
+*.huya.com
+
+# --- Knowledge / community / dev ---
+zhihu.com
+*.zhihu.com
+zhimg.com
+*.zhimg.com
+xiaohongshu.com
+*.xiaohongshu.com
+xhscdn.com
+*.xhscdn.com
+csdn.net
+*.csdn.net
+gitee.com
+*.gitee.com
+cnblogs.com
+*.cnblogs.com
+
+# --- Travel / transport ---
+ctrip.com
+*.ctrip.com
+qunar.com
+*.qunar.com
+12306.cn
+*.12306.cn
+didiglobal.com
+*.didiglobal.com
+xiaojukeji.com
+*.xiaojukeji.com
+
+# --- Devices / OEM ---
+xiaomi.com
+*.xiaomi.com
+mi.com
+*.mi.com
+huawei.com
+*.huawei.com
+hicloud.com
+*.hicloud.com
+vivo.com
+*.vivo.com
+oppo.com
+*.oppo.com
+lenovo.com.cn
+*.lenovo.com.cn
+
+# --- Classifieds / housing ---
+58.com
+*.58.com
+anjuke.com
+*.anjuke.com
+lianjia.com
+*.lianjia.com
+ke.com
+*.ke.com
+autohome.com.cn
+*.autohome.com.cn
+
+# --- Retail ---
+suning.com
+*.suning.com
+vip.com
+*.vip.com
+dangdang.com
+*.dangdang.com
+
+# --- Government / education (broad, domestic by definition) ---
+*.gov.cn
+*.edu.cn
+*.org.cn
+*.ac.cn

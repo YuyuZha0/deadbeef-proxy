@@ -1,13 +1,12 @@
 package org.deadbeef.util;
 
+import static org.junit.Assert.assertEquals;
+
 import com.google.common.base.Splitter;
 import io.vertx.core.MultiMap;
+import java.util.Map;
 import org.deadbeef.protocol.HttpProto;
 import org.junit.Test;
-
-import java.util.Map;
-
-import static org.junit.Assert.assertEquals;
 
 public class HttpHeaderEncoderTest {
 

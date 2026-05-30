@@ -6,9 +6,6 @@ import com.google.common.hash.Hashing;
 import com.google.common.io.BaseEncoding;
 import com.google.common.io.CharStreams;
 import com.google.protobuf.ByteString;
-import org.apache.commons.lang3.StringUtils;
-import org.deadbeef.protocol.HttpProto;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
@@ -16,6 +13,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
+import org.apache.commons.lang3.StringUtils;
+import org.deadbeef.protocol.HttpProto;
 
 @SuppressWarnings("UnstableApiUsage")
 public final class ProxyAuthenticationGenerator implements Supplier<HttpProto.ProxyAuthentication> {

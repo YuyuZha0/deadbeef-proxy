@@ -1,6 +1,5 @@
 package org.deadbeef.server;
 
-import com.google.common.net.HostAndPort;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -8,15 +7,17 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
+import io.vertx.core.net.SocketAddress;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.deadbeef.auth.ProxyAuthenticationValidator;
+import org.deadbeef.route.Authorities;
 import org.deadbeef.security.UpstreamAddressFilter;
 import org.deadbeef.security.UpstreamResolver;
 import org.deadbeef.streams.PipeFactory;
+import org.deadbeef.streams.Tunnels;
 import org.deadbeef.util.Constants;
-import org.deadbeef.util.Utils;
 
 @Slf4j
 public final class ServerConnectHandler implements Handler<HttpServerRequest> {
@@ -55,9 +56,9 @@ public final class ServerConnectHandler implements Handler<HttpServerRequest> {
       return;
     }
 
-    HostAndPort target;
+    SocketAddress target;
     try {
-      target = HostAndPort.fromString(authority).withDefaultPort(443);
+      target = Authorities.fromAuthority(authority, 443);
     } catch (IllegalArgumentException e) {
       response.setStatusCode(HttpResponseStatus.BAD_REQUEST.code()).end();
       return;
@@ -65,29 +66,25 @@ public final class ServerConnectHandler implements Handler<HttpServerRequest> {
 
     request.pause();
 
-    UpstreamResolver.resolveAndFilter(vertx, target.getHost(), target.getPort(), addressFilter)
-        .onFailure(cause -> UpstreamResolver.replyWithError(target.getHost(), cause, response))
+    UpstreamResolver.resolveAndFilter(vertx, target.host(), target.port(), addressFilter)
+        .onFailure(cause -> UpstreamResolver.replyWithError(target.host(), cause, response))
         .onSuccess(
             socketAddress ->
                 netClient
                     .connect(socketAddress)
                     .onFailure(
-                        cause -> UpstreamResolver.replyWithError(target.getHost(), cause, response))
+                        cause -> UpstreamResolver.replyWithError(target.host(), cause, response))
                     .onSuccess(upstream -> upgrade(request, upstream)));
   }
 
   private void upgrade(HttpServerRequest request, NetSocket upstream) {
-    request.toNetSocket(
-        ar -> {
-          if (ar.failed()) {
-            log.warn("CONNECT upgrade failed: ", ar.cause());
-            upstream.close();
-            return;
-          }
-          NetSocket downstream = ar.result();
-          Utils.exchangeCloseHook(upstream, downstream);
-          pipeFactory.newPipe(upstream).to(downstream);
-          pipeFactory.newPipe(downstream).to(upstream);
-        });
+    Tunnels.upgrade(
+        request,
+        upstream,
+        pipeFactory,
+        pipeFactory,
+        null,
+        null,
+        cause -> log.warn("CONNECT upgrade failed: ", cause));
   }
 }

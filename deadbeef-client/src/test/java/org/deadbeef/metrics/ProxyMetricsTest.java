@@ -1,17 +1,21 @@
 package org.deadbeef.metrics;
 
-import com.codahale.metrics.MetricRegistry;
-import org.junit.Test;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+
+import com.codahale.metrics.MetricRegistry;
+import io.vertx.core.json.JsonObject;
+import java.util.concurrent.TimeUnit;
+import org.junit.Test;
 
 public class ProxyMetricsTest {
 
   private static final String[] EXPECTED_NAMES = {
     "proxy.http.requests.total",
     "proxy.http.requests.failed",
+    "proxy.http.requests.direct",
+    "proxy.http.requests.remote",
     "proxy.http.responses.2xx",
     "proxy.http.responses.3xx",
     "proxy.http.responses.4xx",
@@ -22,11 +26,17 @@ public class ProxyMetricsTest {
     "proxy.http.requests.in_flight",
     "proxy.https.tunnels.opened",
     "proxy.https.tunnels.failed",
+    "proxy.https.tunnels.direct",
+    "proxy.https.tunnels.remote",
     "proxy.https.connect.duration",
     "proxy.https.bytes.up",
     "proxy.https.bytes.down",
     "proxy.https.tunnels.active",
   };
+
+  private static ProxyMetrics newMetrics() {
+    return new ProxyMetrics(new MetricRegistry());
+  }
 
   @Test
   public void allMetricsRegisterEagerly() {
@@ -106,6 +116,8 @@ public class ProxyMetricsTest {
     new ProxyMetrics(null);
   }
 
+  // ---- toJson snapshot serialisation ----
+
   @Test
   public void timersAreUsable() {
     MetricRegistry registry = new MetricRegistry();
@@ -121,5 +133,66 @@ public class ProxyMetricsTest {
     }
     assertNotNull(m.httpRequestDuration.getSnapshot());
     assertEquals(1, m.httpRequestDuration.getCount());
+  }
+
+  @Test
+  public void eagerlyRegisteredSeriesArePresentFromStart() {
+    JsonObject json = newMetrics().toJson();
+    assertTrue(json.getLong("ts") > 0);
+    assertTrue(json.getJsonObject("counters").containsKey("proxy.http.requests.total"));
+    assertTrue(json.getJsonObject("counters").containsKey("proxy.https.tunnels.direct"));
+    assertTrue(json.getJsonObject("gauges").containsKey("proxy.http.requests.in_flight"));
+    assertTrue(json.getJsonObject("meters").containsKey("proxy.http.bytes.up"));
+    assertTrue(json.getJsonObject("timers").containsKey("proxy.http.request.duration"));
+  }
+
+  @Test
+  public void counterValueIsExposed() {
+    ProxyMetrics m = newMetrics();
+    m.httpRequestsTotal.inc(42);
+    JsonObject json = m.toJson();
+    assertEquals(42L, (long) json.getJsonObject("counters").getLong("proxy.http.requests.total"));
+  }
+
+  @Test
+  public void gaugeReflectsInFlight() {
+    ProxyMetrics m = newMetrics();
+    m.httpInFlightInc();
+    m.httpInFlightInc();
+    JsonObject json = m.toJson();
+    assertEquals(2, (int) json.getJsonObject("gauges").getInteger("proxy.http.requests.in_flight"));
+  }
+
+  @Test
+  public void meterEmitsCountAndRateFields() {
+    ProxyMetrics m = newMetrics();
+    m.httpBytesUp.mark(1024);
+    JsonObject json = m.toJson();
+    JsonObject meter = json.getJsonObject("meters").getJsonObject("proxy.http.bytes.up");
+    assertNotNull(meter);
+    assertEquals(1024L, (long) meter.getLong("count"));
+    assertNotNull(meter.getValue("m1"));
+    assertNotNull(meter.getValue("m5"));
+    assertNotNull(meter.getValue("m15"));
+    assertNotNull(meter.getValue("mean"));
+  }
+
+  @Test
+  public void timerEmitsPercentilesAndRatesInMillis() {
+    ProxyMetrics m = newMetrics();
+    m.httpRequestDuration.update(50, TimeUnit.MILLISECONDS);
+    m.httpRequestDuration.update(100, TimeUnit.MILLISECONDS);
+    m.httpRequestDuration.update(150, TimeUnit.MILLISECONDS);
+
+    JsonObject json = m.toJson();
+    JsonObject timer = json.getJsonObject("timers").getJsonObject("proxy.http.request.duration");
+    assertNotNull(timer);
+    assertEquals(3L, (long) timer.getLong("count"));
+    // p50 of {50,100,150} ms should be ~100 ms (allow for snapshot estimator wobble).
+    double p50 = timer.getDouble("p50");
+    assertTrue("p50 was " + p50, p50 >= 50.0 && p50 <= 150.0);
+    // Min should be ~50ms, max ~150ms (durations emitted in ms).
+    assertTrue(timer.getDouble("min") >= 49.0 && timer.getDouble("min") <= 51.0);
+    assertTrue(timer.getDouble("max") >= 149.0 && timer.getDouble("max") <= 151.0);
   }
 }

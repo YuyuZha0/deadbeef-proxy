@@ -1,7 +1,6 @@
 package org.deadbeef.util;
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
-
 import java.util.function.Supplier;
 
 public final class YAMLMapperFactory implements Supplier<YAMLMapper> {

@@ -1,0 +1,6 @@
+# whole-line comment
+foo.example.com   # inline comment
+bar.example.com
+   # indented comment
+
+baz.example.com#tight

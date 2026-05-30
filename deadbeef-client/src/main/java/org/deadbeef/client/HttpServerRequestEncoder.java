@@ -5,14 +5,14 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.http.HttpVersion;
-import lombok.NonNull;
-import org.apache.commons.lang3.StringUtils;
-import org.deadbeef.protocol.HttpProto;
-import org.deadbeef.util.HttpHeaderEncoder;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import lombok.NonNull;
+import org.apache.commons.lang3.StringUtils;
+import org.deadbeef.protocol.HttpProto;
+import org.deadbeef.util.HopByHopHeaders;
+import org.deadbeef.util.HttpHeaderEncoder;
 
 public final class HttpServerRequestEncoder
     implements Function<HttpServerRequest, HttpProto.Request> {
@@ -42,6 +42,14 @@ public final class HttpServerRequestEncoder
       default:
         return HttpProto.Version.HTTP_1_1;
     }
+  }
+
+  /**
+   * Reconstruct the absolute target URL from a proxied request. Exposed so the direct-call path can
+   * build {@link io.vertx.core.http.RequestOptions#setAbsoluteURI} without re-encoding the request.
+   */
+  public static String absoluteUrl(HttpServerRequest request) {
+    return buildAbsoluteUrl(request);
   }
 
   private static String buildAbsoluteUrl(HttpServerRequest request) {
@@ -75,7 +83,9 @@ public final class HttpServerRequestEncoder
     builder.setAbsoluteUri(buildAbsoluteUrl(request));
     builder.setScheme(request.scheme());
     builder.setVersion(mapVersion(request.version()));
-    builder.setHeaders(headerEncoder.apply(request.headers()));
+    // Strip hop-by-hop headers (Connection, Transfer-Encoding, Proxy-*, ...) so the browser's
+    // connection-scoped headers never ride the tunnel through to the origin; the body is re-framed.
+    builder.setHeaders(headerEncoder.apply(HopByHopHeaders.copyEndToEnd(request.headers())));
     return builder.build();
   }
 }

@@ -1,9 +1,8 @@
 package org.deadbeef.bootstrap;
 
 import com.google.common.base.Preconditions;
-import org.apache.commons.lang3.StringUtils;
-
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
 
 public interface ProxyConfig {
 

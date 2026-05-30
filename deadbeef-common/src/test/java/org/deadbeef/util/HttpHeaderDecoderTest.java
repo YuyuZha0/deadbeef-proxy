@@ -1,16 +1,15 @@
 package org.deadbeef.util;
 
-import io.vertx.core.MultiMap;
-import org.deadbeef.protocol.HttpProto;
-import org.junit.Test;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.TreeMap;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+
+import io.vertx.core.MultiMap;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+import org.deadbeef.protocol.HttpProto;
+import org.junit.Test;
 
 public class HttpHeaderDecoderTest {
 
@@ -33,10 +32,7 @@ public class HttpHeaderDecoderTest {
   @Test
   public void allLowerCaseMode() {
     HttpProto.Headers headers =
-        HttpProto.Headers.newBuilder()
-            .setAccept("*/*")
-            .setAcceptEncoding("gzip")
-            .build();
+        HttpProto.Headers.newBuilder().setAccept("*/*").setAcceptEncoding("gzip").build();
 
     MultiMap multiMap = new HttpHeaderDecoder(true).apply(headers);
 
@@ -85,8 +81,7 @@ public class HttpHeaderDecoderTest {
 
   @Test
   public void unsetWellKnownFieldOmitted() {
-    HttpProto.Headers headers =
-        HttpProto.Headers.newBuilder().setAccept("*/*").build();
+    HttpProto.Headers headers = HttpProto.Headers.newBuilder().setAccept("*/*").build();
 
     Map<String, String> collected = new HashMap<>();
     new HttpHeaderDecoder().visit(headers, collected::put);

@@ -6,11 +6,10 @@ import com.google.common.base.Preconditions;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.net.NetClientOptions;
-import lombok.Getter;
-import org.deadbeef.bootstrap.ProxyConfig;
-
 import java.util.List;
 import java.util.Map;
+import lombok.Getter;
+import org.deadbeef.bootstrap.ProxyConfig;
 
 @Getter
 public final class ServerConfig implements ProxyConfig {

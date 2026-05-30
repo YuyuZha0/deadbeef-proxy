@@ -1,6 +1,5 @@
 package org.deadbeef.client;
 
-import com.codahale.metrics.MetricRegistry;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.vertx.core.Future;
@@ -11,6 +10,7 @@ import io.vertx.core.http.HttpServerRequest;
 import java.io.ByteArrayOutputStream;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
+import org.deadbeef.metrics.ProxyMetrics;
 
 /**
  * Tiny admin HTTP server that exposes a live metrics dashboard. Bound to {@code 127.0.0.1} so the
@@ -19,7 +19,7 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <ul>
  *   <li>{@code GET /} → the static {@code dashboard.html} page from the classpath.
- *   <li>{@code GET /api/metrics} → a {@link MetricsSnapshot} JSON dump.
+ *   <li>{@code GET /api/metrics} → a {@link ProxyMetrics#toJson} JSON dump.
  *   <li>anything else → 404.
  * </ul>
  */
@@ -32,14 +32,14 @@ public final class MetricsDashboardServer {
   private static final String DASHBOARD_RESOURCE = "dashboard.html";
 
   private final Vertx vertx;
-  private final MetricRegistry registry;
+  private final ProxyMetrics metrics;
   private final int port;
   private volatile HttpServer server;
   private volatile Buffer cachedDashboard;
 
-  public MetricsDashboardServer(@NonNull Vertx vertx, @NonNull MetricRegistry registry, int port) {
+  public MetricsDashboardServer(@NonNull Vertx vertx, @NonNull ProxyMetrics metrics, int port) {
     this.vertx = vertx;
-    this.registry = registry;
+    this.metrics = metrics;
     this.port = port;
   }
 
@@ -123,6 +123,6 @@ public final class MetricsDashboardServer {
         .response()
         .putHeader(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON)
         .putHeader(HttpHeaderNames.CACHE_CONTROL, "no-store")
-        .end(MetricsSnapshot.toJson(registry).encode());
+        .end(metrics.toJson().encode());
   }
 }

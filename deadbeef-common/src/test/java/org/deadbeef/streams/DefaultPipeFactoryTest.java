@@ -1,13 +1,13 @@
 package org.deadbeef.streams;
 
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.streams.Pipe;
 import io.vertx.core.streams.ReadStream;
 import org.junit.Test;
 import org.mockito.Mockito;
-
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
 
 public class DefaultPipeFactoryTest {
 

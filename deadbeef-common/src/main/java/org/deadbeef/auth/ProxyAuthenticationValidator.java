@@ -31,6 +31,7 @@ public final class ProxyAuthenticationValidator
           .<NonceKey, Boolean>build()
           .asMap();
   private final ListMultimap<String, HashFunction> storedMap;
+
   private ProxyAuthenticationValidator(ListMultimap<String, HashFunction> storedMap) {
     this.storedMap = storedMap;
   }
